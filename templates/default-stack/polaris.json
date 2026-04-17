@@ -1,0 +1,6 @@
+{
+  "name": "default-stack",
+  "workspace": {
+    "entrypoint": "README.md"
+  }
+}

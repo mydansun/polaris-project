@@ -1,0 +1,7 @@
+packages:
+  - "apps/web"
+  - "packages/ui"
+  - "packages/shared-types"
+  - "packages/welcome-page"
+  - "packages/ide"
+

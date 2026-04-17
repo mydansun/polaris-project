@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "playwright-mcp-local-browsers": {
+      "source": "mydansun/playwright-mcp-local-browsers",
+      "sourceType": "github",
+      "skillPath": "skills/playwright-mcp-local-browsers/SKILL.md",
+      "computedHash": "645a570fb459626c20eb112f8216683a713ad24b4dbdc93fb359a862d27c04b7"
+    }
+  }
+}

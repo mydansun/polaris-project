@@ -1,0 +1,36 @@
+# Top-level pyproject — exists ONLY to anchor a uv workspace so cross-package
+# editable installs ("polaris-worker depends on polaris-design-intent")
+# resolve to the in-repo source instead of fetching from PyPI.
+#
+# This file is NOT a buildable distribution (note no [build-system]).  It's
+# pure metadata for `uv` to wire the monorepo together.
+#
+# Usage:
+#   uv run --package polaris-api pytest          # from anywhere in repo
+#   cd apps/api && uv run pytest                 # uv auto-discovers root
+#   uv sync --all-packages                       # populate .venv/ at root
+#
+# Each member's per-package deps live in its own pyproject.toml.
+
+[project]
+name = "polaris-monorepo"
+version = "0.0.0"
+description = "Workspace anchor for the polaris monorepo (not a distributable)."
+requires-python = ">=3.12"
+# No deps here — each workspace member has its own.
+
+[tool.uv.workspace]
+members = [
+    "apps/api",
+    "apps/worker",
+    "packages/agent-core",
+    "packages/design-intent",
+]
+
+# Map cross-package deps to the workspace member.  Without this, uv would
+# try to fetch e.g. polaris-design-intent from PyPI.
+[tool.uv.sources]
+polaris-api = { workspace = true }
+polaris-worker = { workspace = true }
+polaris-agent-core = { workspace = true }
+polaris-design-intent = { workspace = true }
