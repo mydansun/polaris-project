@@ -1,0 +1,139 @@
+#!/bin/bash
+# polaris-bg — run long-lived background processes via supervisord inside the
+# polaris workspace container.  Use this instead of `nohup`/`& disown`/`screen`
+# — Codex's exec_command is short-lived, so anything backgrounded from
+# inside it usually dies with the shell.  supervisord keeps the process
+# alive for the container's lifetime and gives you log files you can tail.
+#
+# Usage:
+#   polaris-bg run <name> [--cwd <dir>] -- <command> [args...]
+#       Idempotent: replaces any existing program with this name.
+#   polaris-bg stop <name>
+#   polaris-bg status [<name>]
+#   polaris-bg logs <name> [--lines N]        (default N=200)
+#   polaris-bg list
+#
+# Examples:
+#   polaris-bg run vite --cwd /workspace -- npm run dev -- --host 0.0.0.0 --port 5173
+#   polaris-bg logs vite --lines 60
+#   polaris-bg status vite
+#   polaris-bg stop vite
+
+set -eu
+
+CONFD=/etc/supervisor/conf.d
+LOGDIR=/tmp
+CONF_PREFIX="polaris-bg-"
+
+usage() {
+    sed -n '3,19p' "$0" >&2
+    exit 1
+}
+
+require_name() {
+    [ -n "${1:-}" ] || { echo "polaris-bg: missing <name>" >&2; usage; }
+}
+
+cmd_run() {
+    local name="${1:-}"
+    require_name "$name"
+    shift
+    local cwd="/workspace"
+    if [ "${1:-}" = "--cwd" ]; then
+        cwd="$2"
+        shift 2
+    fi
+    [ "${1:-}" = "--" ] && shift
+    if [ $# -eq 0 ]; then
+        echo "polaris-bg: missing command after --" >&2
+        usage
+    fi
+    # Reconstruct quoted command line (supervisord parses it again).
+    local cmdline=""
+    for arg in "$@"; do
+        # Single-quote and escape embedded single quotes.
+        local escaped="${arg//\'/\'\\\'\'}"
+        cmdline+=" '${escaped}'"
+    done
+    cmdline="${cmdline# }"
+
+    local conf="$CONFD/${CONF_PREFIX}${name}.conf"
+    cat > "$conf" <<PROG
+[program:${name}]
+command=${cmdline}
+directory=${cwd}
+autostart=true
+autorestart=true
+startretries=3
+stopasgroup=true
+killasgroup=true
+stdout_logfile=${LOGDIR}/${CONF_PREFIX}${name}.stdout.log
+stderr_logfile=${LOGDIR}/${CONF_PREFIX}${name}.stderr.log
+stdout_logfile_maxbytes=2MB
+stderr_logfile_maxbytes=2MB
+environment=HOME="/home/workspace",PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PROG
+
+    supervisorctl reread >/dev/null
+    supervisorctl update >/dev/null
+    # `restart` is idempotent when a program already exists; `start` when
+    # it didn't.  Fall through safely if either one says "already".
+    supervisorctl restart "$name" >/dev/null 2>&1 \
+        || supervisorctl start "$name" >/dev/null 2>&1 \
+        || true
+    sleep 1
+    supervisorctl status "$name" || true
+}
+
+cmd_stop() {
+    local name="${1:-}"
+    require_name "$name"
+    supervisorctl stop "$name" >/dev/null 2>&1 || true
+    rm -f "$CONFD/${CONF_PREFIX}${name}.conf"
+    supervisorctl reread >/dev/null
+    supervisorctl update >/dev/null
+    echo "polaris-bg: stopped and removed $name"
+}
+
+cmd_status() {
+    local name="${1:-}"
+    if [ -n "$name" ]; then
+        supervisorctl status "$name"
+    else
+        # Filter to just polaris-bg programs so the agent doesn't see
+        # infrastructure noise (codex-app-server, theia).
+        supervisorctl status | grep -E '^[a-zA-Z0-9_-]+' || true
+    fi
+}
+
+cmd_logs() {
+    local name="${1:-}"
+    require_name "$name"
+    shift
+    local lines=200
+    if [ "${1:-}" = "--lines" ]; then
+        lines="$2"
+    fi
+    echo "=== stdout (last ${lines} lines) ==="
+    tail -n "$lines" "${LOGDIR}/${CONF_PREFIX}${name}.stdout.log" 2>/dev/null \
+        || echo "(no stdout log yet)"
+    echo ""
+    echo "=== stderr (last ${lines} lines) ==="
+    tail -n "$lines" "${LOGDIR}/${CONF_PREFIX}${name}.stderr.log" 2>/dev/null \
+        || echo "(no stderr log yet)"
+}
+
+cmd_list() {
+    cmd_status
+}
+
+sub="${1:-}"
+case "$sub" in
+    run) shift; cmd_run "$@" ;;
+    stop) shift; cmd_stop "$@" ;;
+    status) shift; cmd_status "$@" ;;
+    logs) shift; cmd_logs "$@" ;;
+    list) cmd_list ;;
+    -h|--help|"") usage ;;
+    *) echo "polaris-bg: unknown subcommand: $sub" >&2; usage ;;
+esac

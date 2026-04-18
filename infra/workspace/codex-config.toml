@@ -1,0 +1,39 @@
+# Default Codex config baked into the workspace image and seeded into each
+# workspace's codex-home named volume.  Overrides go to $CODEX_HOME/config.toml
+# which is this file's path at runtime.
+#
+# Sandbox strategy: the workspace container IS our sandbox boundary
+# (per-workspace docker project, bind-mounted /workspace, dedicated network,
+# non-root user, memory/cpu limits).  Codex's own bubblewrap layer on top of
+# that fails inside Docker anyway because the default AppArmor profile
+# blocks unprivileged user-namespace creation ("No permissions to create
+# new namespace"), so we run Codex with no sandbox and auto-approve every
+# tool call.  Trust model: the container; API-key cost limits; rw auth.json
+# bind-mount.
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+
+# Playwright MCP runs inside this same workspace container as a stdio child of
+# codex, and connects to the chromium-vnc container via the per-workspace
+# docker network (service name `chromium-vnc`, CDP port 9223 — the nginx
+# proxy in the chromium-vnc container; chromium itself is bound to
+# 127.0.0.1:9222 and is not reachable across the docker bridge).
+[mcp_servers.playwright]
+command = "npx"
+args = ["--yes", "@playwright/mcp@latest", "--config", "/etc/codex/playwright.json"]
+startup_timeout_sec = 30
+
+# Polaris MCP over streamable HTTP — Codex connects to the platform API at
+# /mcp.  The platform holds the Unsplash API key + S3 credentials and
+# returns stable S3 URLs for any image embedded in generated pages.  Auth
+# uses the per-workspace token injected by compose.py; Codex sends it as
+# `Authorization: Bearer $POLARIS_WORKSPACE_TOKEN`.
+#
+# The URL matches the `api_url_for_workspace` Setting default — `api:8000`
+# resolves on the shared `polaris-shared` network that workspace and
+# api containers both join.  Legacy host-mode deployments (api on host,
+# not in a container) override this in $CODEX_HOME/config.toml to
+# `http://host.docker.internal:8000/mcp`.
+[mcp_servers.polaris]
+url = "http://api:8000/mcp"
+bearer_token_env_var = "POLARIS_WORKSPACE_TOKEN"
