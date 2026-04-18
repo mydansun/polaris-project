@@ -1,0 +1,21 @@
+# Reusable middlewares + serversTransport.  Per-service routers live as
+# docker labels on the `api` / `web` / per-workspace / per-publish
+# containers, NOT here — that way the route names & host rules can use
+# `${POLARIS_DOMAIN}` interpolation done by docker compose.
+#
+# This file deliberately holds only "things shared across many routers"
+# — keep it short.
+
+http:
+  middlewares:
+    strip-api-prefix:
+      stripPrefix:
+        prefixes: ["/api"]
+    # Used by the redirect router for `www.<domain>` → `<domain>` (apex).
+    # The actual router is declared in compose.dev.yaml as a label on
+    # the api service so its rule can interpolate the domain.
+    redirect-www-to-apex:
+      redirectRegex:
+        regex: "^https?://www\\.(.+)$"
+        replacement: "https://${1}"
+        permanent: true
