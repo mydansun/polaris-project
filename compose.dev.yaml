@@ -1,0 +1,355 @@
+# Single-file dev stack for polaris.  Deliberately named compose.dev.yaml
+# (NOT compose.yaml) so docker compose's auto-discovery doesn't pick it
+# up — daily flow goes through scripts/{up,down,build}.py which call us
+# with `-f compose.dev.yaml` explicitly.  Power users wanting a one-off
+# `docker compose logs api` can either pass `-f compose.dev.yaml` or set
+# `export COMPOSE_FILE=compose.dev.yaml` in their shell.
+#
+# Architectural notes:
+#  - api + worker mount /var/run/docker.sock so they can spawn per-
+#    workspace + per-publish compose stacks at runtime.  Those spawned
+#    stacks live OUTSIDE this file (api renders YAML into
+#    .data/workspace-meta/<id>/ and runs `docker compose -f ... up`).
+#  - The repo is bind-mounted at the SAME absolute path inside api/worker
+#    that it has on the host (`${PWD}:${PWD}`) so generated workspace
+#    compose `volumes:` host-paths resolve identically inside and out.
+#  - All host-side bind-mounts use `./` — `docker compose down && mv repo
+#    && docker compose up` carries every state along.
+
+name: polaris
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: "123456"
+      POSTGRES_DB: polaris
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # Random loopback port so host-side dev tools (seed.py / psql) can
+    # connect, but no fixed-port collision risk if another postgres is
+    # already running on :5432.  scripts/lib/db.py detects the actual
+    # port via `docker port polaris-postgres-1 5432`.
+    ports:
+      - "127.0.0.1::5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d polaris"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - polaris-shared
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - polaris-shared
+
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    environment:
+      REGISTRY_HTTP_ADDR: "0.0.0.0:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5000/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - polaris-shared
+    # Bound to loopback only — publish pipeline pushes from the api
+    # container (same daemon), no network exposure.
+    ports:
+      - "127.0.0.1:5000:5000"
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY}
+      # Enables virtual-host bucket addressing (e.g. polaris.s3.<domain>).
+      # Path-style still works alongside this.
+      MINIO_DOMAIN: s3.${POLARIS_DOMAIN}
+    volumes:
+      - ./infra/minio/data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - polaris-shared
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      # HostRegexp matches both `s3.<domain>` (path-style) and
+      # `<bucket>.s3.<domain>` (virtual-host).  Inner `$$` escapes the
+      # docker compose variable substitution so traefik sees `$`.
+      - "traefik.http.routers.minio.rule=HostRegexp(`^(.+\\.)?s3\\.${POLARIS_DOMAIN}$$`)"
+      - "traefik.http.routers.minio.entrypoints=websecure"
+      - "traefik.http.routers.minio.tls=true"
+      - "traefik.http.routers.minio.tls.certresolver=cf"
+      - "traefik.http.routers.minio.tls.domains[0].main=${POLARIS_DOMAIN}"
+      - "traefik.http.routers.minio.tls.domains[0].sans=*.s3.${POLARIS_DOMAIN}"
+      - "traefik.http.services.minio.loadbalancer.server.port=9000"
+
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8090:8090"   # dashboard (api.insecure)
+    environment:
+      # Auth for the lego cloudflare provider — read inside traefik.
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN:?run scripts/up.py to configure}
+      # ACME resolver config: traefik static YAML can't do shell-style
+      # ${VAR:-default} expansion, but TRAEFIK_* env-name overrides ARE
+      # first-class.  Compose interpolates the defaults below before
+      # injecting into the container.
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_EMAIL=${ACME_EMAIL:-noreply@polaris.dev}
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_STORAGE=/letsencrypt/acme.json
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_CASERVER=${TRAEFIK_CASERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_DNSCHALLENGE_PROVIDER=cloudflare
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_DNSCHALLENGE_RESOLVERS=1.1.1.1:53,8.8.8.8:53
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/traefik/traefik.yaml:/etc/traefik/traefik.yaml:ro
+      - ./infra/traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-acme:/letsencrypt
+    networks:
+      - traefik-public
+      - polaris-shared
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8090/ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  api:
+    image: polaris/api:dev
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Datastore URLs default to 127.0.0.1 in pydantic Settings — that
+      # works for host-mode dev but not in-container.  Override to the
+      # service-DNS names on the polaris-shared network.
+      POLARIS_DATABASE_URL: postgresql+asyncpg://root:123456@postgres:5432/polaris
+      POLARIS_REDIS_URL: redis://redis:6379/0
+      # Make the host-side path of the repo discoverable to compose.py
+      # so generated workspace compose YAMLs use a path the host docker
+      # daemon can resolve.  ${PWD} is the directory `docker compose` was
+      # invoked from = the repo root.
+      POLARIS_HOST_REPO_ROOT: ${PWD}
+      # Defaults to ~/.codex/auth.json on the host (HOME comes from the
+      # invoking shell).  up.py creates an empty stub at this path before
+      # `compose up` so the bind-mount never fails.
+      POLARIS_HOST_CODEX_AUTH_PATH: ${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}
+    env_file:
+      - .env
+    volumes:
+      # Same path inside as outside — keeps generated workspace compose
+      # bind-mount paths valid both for the host docker daemon AND for
+      # the api process reading/writing them.
+      - "${PWD}:${PWD}"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}:${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}"
+    working_dir: ${PWD}/apps/api
+    networks:
+      - polaris-shared
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.api.rule=Host(`${POLARIS_DOMAIN}`) && PathPrefix(`/api/`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.routers.api.tls.certresolver=cf"
+      - "traefik.http.routers.api.tls.domains[0].main=${POLARIS_DOMAIN}"
+      - "traefik.http.routers.api.tls.domains[0].sans=*.${POLARIS_DOMAIN}"
+      - "traefik.http.routers.api.middlewares=strip-api-prefix@file"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+
+  worker:
+    image: polaris/worker:dev
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      POLARIS_DATABASE_URL: postgresql+asyncpg://root:123456@postgres:5432/polaris
+      POLARIS_REDIS_URL: redis://redis:6379/0
+      POLARIS_HOST_REPO_ROOT: ${PWD}
+      # Defaults to ~/.codex/auth.json on the host (HOME comes from the
+      # invoking shell).  up.py creates an empty stub at this path before
+      # `compose up` so the bind-mount never fails.
+      POLARIS_HOST_CODEX_AUTH_PATH: ${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}
+    env_file:
+      - .env
+    volumes:
+      - "${PWD}:${PWD}"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}:${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}"
+    working_dir: ${PWD}/apps/worker
+    networks:
+      - polaris-shared
+
+  web:
+    image: polaris/web:dev
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      # vite reads POLARIS_DOMAIN from .env via the loadEnv() call in
+      # vite.config.ts; HMR target uses wss://${POLARIS_DOMAIN}:443.
+      POLARIS_DOMAIN: ${POLARIS_DOMAIN}
+    env_file:
+      - .env
+    volumes:
+      # Bind-mount the whole apps/web (including node_modules' pnpm
+      # symlinks) + the root node_modules where pnpm's .pnpm/ store
+      # lives.  This way `pnpm add <dep>` on the host immediately shows
+      # up in the container; no image rebuild needed for dep changes.
+      # node_modules layout: pnpm puts the actual package files in
+      # ROOT/node_modules/.pnpm/<pkg>@<ver>/ and symlinks ROOT/node_modules
+      # + apps/web/node_modules into them with relative ../../../ paths,
+      # which resolve correctly inside the container as long as both
+      # mounts use the same relative depth as the host.
+      - ./apps/web:/app/apps/web
+      - ./packages/ui/src:/app/packages/ui/src
+      - ./packages/shared-types/src:/app/packages/shared-types/src
+      - ./node_modules:/app/node_modules
+      - ./tsconfig.base.json:/app/tsconfig.base.json
+    networks:
+      - polaris-shared
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.web.rule=Host(`${POLARIS_DOMAIN}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls=true"
+      - "traefik.http.routers.web.tls.certresolver=cf"
+      - "traefik.http.routers.web.tls.domains[0].main=${POLARIS_DOMAIN}"
+      - "traefik.http.routers.web.tls.domains[0].sans=*.${POLARIS_DOMAIN}"
+      # Second wildcard: per-published-project routes live at
+      # <uuid>.${POLARIS_PROD_DOMAIN_BASE}, which is two-label deep —
+      # the *.${POLARIS_DOMAIN} SAN above only matches one label.
+      # Pre-issue *.${POLARIS_PROD_DOMAIN_BASE} on the always-on
+      # `web` service so the cert is in the traefik-acme volume by the
+      # time anyone visits a published-project URL.  Default base is
+      # ``prod.<POLARIS_DOMAIN>`` (see scripts/lib/spec.py).
+      - "traefik.http.routers.web.tls.domains[1].main=${POLARIS_PROD_DOMAIN_BASE}"
+      - "traefik.http.routers.web.tls.domains[1].sans=*.${POLARIS_PROD_DOMAIN_BASE}"
+      - "traefik.http.services.web.loadbalancer.server.port=5173"
+      # www → apex redirect, sharing the same wildcard cert.
+      - "traefik.http.routers.www-redirect.rule=Host(`www.${POLARIS_DOMAIN}`)"
+      - "traefik.http.routers.www-redirect.entrypoints=websecure"
+      - "traefik.http.routers.www-redirect.tls=true"
+      - "traefik.http.routers.www-redirect.tls.certresolver=cf"
+      - "traefik.http.routers.www-redirect.middlewares=redirect-www-to-apex@file"
+      - "traefik.http.routers.www-redirect.service=web"
+
+  # ── Headless-server dev convenience ───────────────────────────────────
+  # A long-lived chromium-in-a-VNC container so a developer using Claude
+  # Code on a remote box can open the frontend in a real browser from
+  # their laptop without leaving the SSH session.  The browser launches
+  # already pointing at https://${POLARIS_DOMAIN}, so HMR / live-reload
+  # of apps/web is visible immediately.
+  #
+  # Routed through traefik on a wildcard subdomain so the connection is
+  # HTTPS with the real Let's Encrypt cert (Selkies' WebRTC UI relies
+  # on browser secure-context APIs — clipboard, gamepad, getUserMedia —
+  # which are gated behind https://).  No host port binding.
+  #
+  # Connection: open https://vnc.${POLARIS_DOMAIN}/ in your laptop
+  # browser; click anywhere in the chromium frame to grab control.
+  # No password — DO NOT expose this domain to the public internet
+  # without setting SELKIES_PASSWORD first.
+  dev-vnc:
+    image: lscr.io/linuxserver/chromium:latest
+    restart: unless-stopped
+    shm_size: "1gb"
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "Etc/UTC"
+      # Pre-load the dev frontend.  Chromium reads this on startup.
+      CHROME_CLI: "https://${POLARIS_DOMAIN}/"
+    extra_hosts:
+      # Resolve polaris-dev.xyz to the host's traefik (host-gateway is
+      # the docker-managed alias for the host LAN IP) so the bundled
+      # chromium hits the real cert chain we already proved in Stage 7.
+      - "${POLARIS_DOMAIN}:host-gateway"
+    networks:
+      - polaris-shared
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.dev-vnc.rule=Host(`vnc.${POLARIS_DOMAIN}`)"
+      - "traefik.http.routers.dev-vnc.entrypoints=websecure"
+      - "traefik.http.routers.dev-vnc.tls=true"
+      - "traefik.http.routers.dev-vnc.tls.certresolver=cf"
+      - "traefik.http.routers.dev-vnc.tls.domains[0].main=${POLARIS_DOMAIN}"
+      - "traefik.http.routers.dev-vnc.tls.domains[0].sans=*.${POLARIS_DOMAIN}"
+      - "traefik.http.services.dev-vnc.loadbalancer.server.port=3000"
+
+networks:
+  # /24 = 254 usable IPs.  Default docker bridges are /28 (14 usable) —
+  # platform itself eats ~9 (traefik / web / api / worker / postgres /
+  # redis / registry / minio / dev-vnc), so each workspace's ws+br
+  # pair fills the rest after just two or three concurrent projects.
+  # /24 keeps headroom for ~120 simultaneous workspaces, which is
+  # comfortably more than a dev box will ever spawn.
+  polaris-shared:
+    name: polaris-shared
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.200.0.0/24
+  traefik-public:
+    name: traefik-public
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.110.0.0/24
+
+volumes:
+  postgres-data:
+    name: polaris-postgres-data
+  redis-data:
+    name: polaris-redis-data
+  registry-data:
+    name: polaris-registry-data
+  traefik-acme:
+    name: polaris-traefik-acme

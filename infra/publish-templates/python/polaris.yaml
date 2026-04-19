@@ -1,0 +1,11 @@
+version: 1
+stack: python
+build: ""
+start: "__POLARIS_START_CMD__"
+port: __POLARIS_PORT__
+deps: []
+secrets: []
+env: {}
+publish:
+  service: __POLARIS_SERVICE__
+  port: __POLARIS_PORT__

@@ -1,0 +1,13 @@
+# User-project production compose (python).
+# Do NOT reference `./.env.polaris.prod` here — the platform's compose.polaris.yml
+# override injects env_file with the absolute path to your project's
+# secrets.env at publish time.
+#
+# NOTE: any host-published `ports:` you (or the agent) add to a service
+# here will be stripped automatically at publish time — traefik owns the
+# host ingress (80/443) so host publishes would collide.
+
+services:
+  __POLARIS_SERVICE__:
+    build: .
+    restart: unless-stopped
