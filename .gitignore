@@ -29,3 +29,7 @@ certs/*.pem
 
 # MinIO bind-mount data
 infra/minio/data/
+
+# Claude Code local settings and runtime files
+.claude/settings.local.json
+.claude/*.lock
