@@ -9,8 +9,13 @@ WEB_COMPOSE := infra/web/compose.yaml
 .PHONY: prereqs bootstrap bootstrap-venvs bootstrap-node preflight-ports \
 	infra stop stop-infra migrate \
 	api worker web \
-	dev dev-local staging pull-images build-ide build-workspace welcome-page check-process-compose \
+	dev dev-local staging start-published pull-images build-ide build-workspace welcome-page check-process-compose \
 	clear down test-design-intent test-worker
+
+# Host-side directory where published projects' compose + secrets live.
+# Mirrors POLARIS_PUBLISH_PROJECTS_ROOT in apps/api (config.py); override
+# for prod hosts (e.g. /srv/polaris-projects).
+PUBLISH_PROJECTS_ROOT ?= $(CURDIR)/.data/projects
 
 # ── Prerequisites (tool presence only; venv/deps handled by bootstrap) ─
 prereqs:
@@ -173,13 +178,16 @@ dev-local: bootstrap welcome-page preflight-ports pull-images build-workspace bu
 # One-shot "prep everything" for staging hosts where api / worker / web
 # run under Supervisor rather than process-compose.  Builds every image,
 # pre-pulls externals, brings infra up, runs migrations, builds the web
-# bundle.  Does NOT start api / worker / web — that's Supervisor's job.
+# bundle, and brings previously-published per-project stacks back up
+# (they were stopped by `make stop`; `make staging` is the re-up path).
+# Does NOT start api / worker / web — that's Supervisor's job.
 # Safe to re-run after `git pull`; every sub-target is dep-aware or idempotent.
 staging: bootstrap welcome-page pull-images build-workspace build-chromium infra migrate
 	@echo "Building web bundle (apps/web/dist)..."
 	@pnpm --filter @polaris/web build
 	@echo "Starting polaris-web nginx sidecar..."
 	docker compose -f $(WEB_COMPOSE) up -d
+	@$(MAKE) --no-print-directory start-published
 	@echo ""
 	@echo "================================================================="
 	@echo " Staging prep complete."
@@ -188,6 +196,37 @@ staging: bootstrap welcome-page pull-images build-workspace build-chromium infra
 	@echo "         sudo supervisorctl reread && sudo supervisorctl update"
 	@echo "         sudo supervisorctl start polaris-api polaris-worker"
 	@echo "================================================================="
+
+# ── Bring published per-project stacks up ─────────────────────────────
+# Walks $(PUBLISH_PROJECTS_ROOT)/<uuid>/ for every dir that has both
+# compose.prod.yml and compose.polaris.yml (i.e. has been published at
+# least once) and runs `docker compose up -d` with the same project
+# name the publish pipeline uses: polaris-pub-<24-char-hash>.
+# Idempotent — already-running stacks are a no-op.  Invoked by
+# `make staging`; safe to run standalone after `make stop`.
+start-published:
+	@if [ ! -d "$(PUBLISH_PROJECTS_ROOT)" ]; then \
+		echo "No published projects dir at $(PUBLISH_PROJECTS_ROOT) — skipping."; \
+		exit 0; \
+	fi; \
+	found=0; \
+	for dir in "$(PUBLISH_PROJECTS_ROOT)"/*/; do \
+		[ -d "$$dir" ] || continue; \
+		[ -f "$$dir/compose.prod.yml" ] || continue; \
+		[ -f "$$dir/compose.polaris.yml" ] || continue; \
+		found=1; \
+		uuid=$$(basename "$$dir"); \
+		hash=$$(echo "$$uuid" | tr -d '-' | cut -c1-24); \
+		project="polaris-pub-$$hash"; \
+		echo "▶ compose up -d ($$project)"; \
+		docker compose -p "$$project" \
+			-f "$$dir/compose.prod.yml" \
+			-f "$$dir/compose.polaris.yml" \
+			up -d || echo "  ⚠ failed to start $$project (continuing)"; \
+	done; \
+	if [ "$$found" = "0" ]; then \
+		echo "No published projects found under $(PUBLISH_PROJECTS_ROOT)."; \
+	fi
 
 # ── Clear: wipe all workspace containers, networks, meta, and volumes ──
 # Postgres and Redis are stopped + their volumes dropped, but NOT recreated —

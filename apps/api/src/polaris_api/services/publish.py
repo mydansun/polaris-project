@@ -451,6 +451,10 @@ def render_prod_override(
         "    # the platform — prod never builds, only pulls.",
         f"    image: {image}",
         "    pull_policy: always",
+        # Survive Docker daemon restarts + host reboots. Deps (postgres /
+        # redis below) already carry this; without it on the user service,
+        # published sites vanish on any docker restart.
+        "    restart: unless-stopped",
         "    env_file:",
         f"      - {secrets_file}",
         "    networks:",
