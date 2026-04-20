@@ -1,0 +1,11 @@
+version: 1
+stack: static
+build: ""
+start: ""
+port: 80
+deps: []
+secrets: []
+env: {}
+publish:
+  service: __POLARIS_SERVICE__
+  port: 80

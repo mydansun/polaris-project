@@ -1,0 +1,48 @@
+# MinIO — S3-compatible object store. Sibling infra to traefik, managed by
+# its own compose file. Data persists at infra/minio/data/ (bind mount),
+# outside every path wiped by `make clear`.
+#
+# Routing (via traefik labels on the traefik-public network; no host port
+# for the S3 API — traefik reaches minio over the docker network):
+#   s3.polaris-dev.xyz              — path-style    (s3.polaris-dev.xyz/<bucket>/<key>)
+#   <bucket>.s3.polaris-dev.xyz     — virtual-host  (enabled by MINIO_DOMAIN)
+# A single HostRegexp router matches both, served by the *.s3.polaris-dev.xyz
+# cert loaded in infra/traefik/dynamic/certs.yaml.
+#
+# Console UI is published on 0.0.0.0:9001 — not routed via traefik, reached
+# directly on the host IP (LAN-visible; do not expose on the public internet).
+#
+# Credentials come from the repo-root .env (MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)
+# via --env-file in the Makefile targets.
+
+services:
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-03T14-56-28Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9001:9001"
+    environment:
+      MINIO_DOMAIN: s3.polaris-dev.xyz
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ./data:/data
+    networks:
+      - traefik-public
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.minio.rule=HostRegexp(`^(.+\\.)?s3\\.polaris-dev\\.xyz$$`)"
+      - traefik.http.routers.minio.entrypoints=websecure
+      - traefik.http.routers.minio.tls=true
+      - traefik.http.services.minio.loadbalancer.server.port=9000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+networks:
+  traefik-public:
+    name: traefik-public
+    external: true

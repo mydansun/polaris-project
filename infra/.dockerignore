@@ -1,0 +1,9 @@
+# Build context for the workspace image is this whole `infra/` dir (see
+# `make build-workspace`).  Exclude directories that aren't part of the
+# image to keep context small.
+chromium
+compose
+nginx
+traefik
+# include: workspace/ (the Dockerfile + supporting files)
+# include: publish-templates/ (copied into /opt/polaris-publish-templates)

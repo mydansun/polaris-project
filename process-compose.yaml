@@ -1,0 +1,29 @@
+version: "0.5"
+
+processes:
+  api:
+    working_dir: ./apps/api
+    command: .venv/bin/uvicorn polaris_api.main:app --reload --host 0.0.0.0 --port 8000
+    availability:
+      restart: "no"
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8000
+        path: /health
+      period_seconds: 2
+      failure_threshold: 30
+
+  worker:
+    working_dir: ./apps/worker
+    command: .venv/bin/polaris-worker
+    availability:
+      restart: "no"
+    depends_on:
+      api:
+        condition: process_healthy
+
+  web:
+    command: pnpm dev:web
+    availability:
+      restart: "no"

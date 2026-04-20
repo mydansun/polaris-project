@@ -1,0 +1,35 @@
+# Default Codex config baked into the workspace image and seeded into each
+# workspace's codex-home named volume.  Overrides go to $CODEX_HOME/config.toml
+# which is this file's path at runtime.
+#
+# Sandbox strategy: the workspace container IS our sandbox boundary
+# (per-workspace docker project, bind-mounted /workspace, dedicated network,
+# non-root user, memory/cpu limits).  Codex's own bubblewrap layer on top of
+# that fails inside Docker anyway because the default AppArmor profile
+# blocks unprivileged user-namespace creation ("No permissions to create
+# new namespace"), so we run Codex with no sandbox and auto-approve every
+# tool call.  Trust model: the container; API-key cost limits; rw auth.json
+# bind-mount.
+sandbox_mode = "danger-full-access"
+approval_policy = "never"
+
+# Playwright MCP runs inside this same workspace container as a stdio child of
+# codex, and connects to the chromium-vnc container via the per-workspace
+# docker network (service name `chromium-vnc`, CDP port 9222).
+[mcp_servers.playwright]
+command = "npx"
+args = ["--yes", "@playwright/mcp@latest", "--config", "/etc/codex/playwright.json"]
+startup_timeout_sec = 30
+
+# Polaris MCP over streamable HTTP — Codex connects to the platform API at
+# /mcp.  The platform holds the Unsplash API key + S3 credentials and
+# returns stable S3 URLs for any image embedded in generated pages.  Auth
+# uses the per-workspace token injected by compose.py; Codex sends it as
+# `Authorization: Bearer $POLARIS_WORKSPACE_TOKEN`.
+#
+# The hardcoded URL matches the default `api_url_for_workspace` Setting
+# (host.docker.internal:8000).  Deployments that override that env should
+# also override this URL via $CODEX_HOME/config.toml.
+[mcp_servers.polaris]
+url = "http://host.docker.internal:8000/mcp"
+bearer_token_env_var = "POLARIS_WORKSPACE_TOKEN"

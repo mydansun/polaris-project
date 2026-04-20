@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: "123456"
+      POSTGRES_DB: polaris
+    volumes:
+      - polaris-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d polaris"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - polaris-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Local image registry for the publish pipeline.  The build worker pushes
+  # `polaris/<project-uuid>:<commit-hash>` images here; the prod-side compose
+  # `up` pulls from the same registry.  Both sides run on the dev machine
+  # for demo, so 127.0.0.1 is fine.  Retention policy = keep forever (until
+  # we add GC — see plan risks).
+  registry:
+    image: registry:2
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - polaris-registry-data:/var/lib/registry
+    environment:
+      # Accept pushes from the host docker daemon (no TLS).
+      REGISTRY_HTTP_ADDR: "0.0.0.0:5000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5000/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  polaris-internal:
+    # Explicit name (no compose project prefix) so per-workspace compose files
+    # and the traefik compose can reference it as external by this literal name.
+    name: polaris-internal
+
+volumes:
+  polaris-postgres-data:
+  polaris-redis-data:
+  polaris-registry-data:

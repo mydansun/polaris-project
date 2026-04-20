@@ -1,0 +1,208 @@
+{
+  "app": {
+    "loading": "加载中...",
+    "turnInterrupted": "对话已中断",
+    "dragToResize": "拖动调整大小",
+    "proceedWithPlan": "按计划继续。",
+    "errors": {
+      "unableToStartTurn": "无法开始对话",
+      "unableToInterrupt": "无法中断",
+      "unableToProceed": "无法继续",
+      "failedClarification": "提交澄清失败",
+      "unableToConfigureIde": "无法配置代码编辑器",
+      "unableToRestartWorkspace": "无法重启工作区",
+      "unableToOpenBrowser": "无法打开浏览器",
+      "unableToStopBrowser": "无法停止浏览器",
+      "unableToStartWorkspace": "无法启动工作区",
+      "failedToLoadProject": "加载项目失败",
+      "apiNotReady": "API 未就绪"
+    }
+  },
+  "login": {
+    "signInWithEmail": "使用邮箱登录",
+    "enterInviteCode": "输入邀请码加入",
+    "enterCodeSentTo": "输入发送到 {{email}} 的验证码",
+    "emailPlaceholder": "you@example.com",
+    "inviteCodePlaceholder": "邀请码",
+    "codePlaceholder": "ABC123",
+    "continue": "继续",
+    "verify": "验证",
+    "checking": "检查中...",
+    "verifying": "验证中...",
+    "devLogin": "开发者登录",
+    "back": "返回",
+    "resendIn": "{{seconds}} 秒后重发",
+    "resendCode": "重新发送",
+    "errors": {
+      "invalidInviteCode": "邀请码无效",
+      "invalidOrExpiredInvite": "邀请码无效或已过期",
+      "verificationFailed": "验证失败",
+      "failedToSendCode": "发送验证码失败",
+      "failedToResendCode": "重新发送失败"
+    }
+  },
+  "chat": {
+    "newProject": "新项目",
+    "apiOffline": "API 离线",
+    "sendMessage": "发送消息...",
+    "typeNextMessage": "输入下一条消息...",
+    "discoverIntent": "帮我构思",
+    "rediscoverIntent": "重新构思",
+    "describeWhatToBuild": "描述你想要构建的...",
+    "welcomeSubtitle": "描述你想要构建的内容，Polaris 代理将帮助你实现。",
+    "agentIsWorking": "Polaris 工作中",
+    "loadEarlierMessages": "加载更早的消息",
+    "toSend": "发送",
+    "jumpToLatest": "跳到最新",
+    "stopCurrentTurn": "停止当前对话",
+    "proceed": "开始执行",
+    "orTypeAdjustments": "或在下方输入调整意见",
+    "menu": {
+      "switchProject": "切换项目",
+      "moreActions": "更多操作",
+      "newProject": "新建项目",
+      "deployments": "部署记录",
+      "restartWorkspace": "重启工作区",
+      "signOut": "退出登录"
+    },
+    "restartConfirm": {
+      "title": "重启工作区？",
+      "body": "代码编辑器和运行中的开发服务器将短暂中断后恢复。你的代码、Git 历史和聊天记录不会丢失。",
+      "confirm": "重启",
+      "cancel": "取消"
+    },
+    "tabs": {
+      "browser": "浏览器",
+      "ide": "代码编辑器",
+      "hide": "隐藏"
+    }
+  },
+  "editor": {
+    "loading": "加载代码编辑器...",
+    "starting": "启动工作区代码编辑器...",
+    "waitingForProject": "创建项目后,代码编辑器会自动打开。",
+    "waitingForAgent": "代码编辑器会在代理需要时自动打开。",
+    "failed": "工作区代码编辑器启动失败。"
+  },
+  "browser": {
+    "loading": "加载浏览器...",
+    "starting": "启动浏览器...",
+    "waitingForProject": "创建项目后,浏览器会自动打开。",
+    "waitingForAgent": "浏览器会在代理需要时自动打开。",
+    "agentTesting": "代理正在测试...",
+    "openBrowser": "打开浏览器",
+    "opening": "打开中...",
+    "unavailable": "不可用",
+    "sessionIs": "浏览器会话状态：{{status}}。"
+  },
+  "items": {
+    "agentMessage": "代理消息",
+    "planning": "规划中",
+    "reasoning": "推理",
+    "executeCommand": "执行命令",
+    "fileChange": "文件变更",
+    "toolCall": "工具调用",
+    "internalCall": "内部调用",
+    "webSearch": "网页搜索",
+    "clarification": "需求澄清",
+    "error": "错误",
+    "step": "代理活动",
+    "clarifying": "构思澄清",
+    "references": "搜索设计参考图",
+    "moodBoard": "设计灵感板",
+    "compiled": "设计方案",
+    "details": "详情",
+    "commandAndOutput": "命令和输出",
+    "commandExitOutput": "命令，退出码 {{exit}}，输出",
+    "pathAndDiff": "路径和差异",
+    "nFiles": "{{count}} 个文件",
+    "add": "新增",
+    "delete": "删除",
+    "update": "修改",
+    "unnamed": "（未命名）",
+    "noDiff": "（无差异）",
+    "planTabs": {
+      "plain": "速览",
+      "technical": "详情"
+    }
+  },
+  "status": {
+    "running": "运行中",
+    "queued": "排队中",
+    "completed": "已完成",
+    "failed": "失败",
+    "interrupted": "已中断",
+    "idle": "空闲"
+  },
+  "publish": {
+    "title": "发布",
+    "description": "将项目发布到互联网，让所有人都能访问。我们会暂时为您分配一个随机域名。",
+    "current": "当前",
+    "neverPublished": "未发布",
+    "requestButton": "立即发布",
+    "requestMessage": "请发布本项目。",
+    "agentBusy": "代理正在工作，等代理完成当前任务后再发布。",
+    "history": "历史记录",
+    "noDeployments": "暂无部署记录",
+    "rollbackConfirm": "回滚到 {{commit}}？这将替换当前线上版本。",
+    "errors": {
+      "loadFailed": "加载部署记录失败",
+      "publishFailed": "发布失败",
+      "rollbackFailed": "回滚失败"
+    },
+    "statuses": {
+      "queued": "排队中",
+      "building": "构建中",
+      "deploying": "部署中",
+      "ready": "就绪",
+      "failed": "失败",
+      "rolledBack": "已回滚"
+    }
+  },
+  "projects": {
+    "title": "项目",
+    "new": "新建",
+    "empty": "暂无项目。点击「新建」创建一个。",
+    "justNow": "刚刚",
+    "minutesAgo": "{{count}} 分钟前",
+    "hoursAgo": "{{count}} 小时前",
+    "daysAgo": "{{count}} 天前"
+  },
+  "clarification": {
+    "overrideLabel": "或者告诉 Polaris 你的想法",
+    "continue": "继续",
+    "next": "下一个",
+    "back": "上一题"
+  },
+  "statusBar": {
+    "fileChanges": "文件更改",
+    "testCalls": "测试调用"
+  },
+  "quota": {
+    "title": "并发配额不足",
+    "userBody": "您同时进行中的任务已达 {{limit}} 个上限，请等待其中一个完成后再试。",
+    "platformBody": "平台正忙（并发已达 {{limit}} 个上限），请稍后再试。",
+    "ok": "知道了"
+  },
+  "examples": {
+    "golf": {
+      "title": "高尔夫落地页",
+      "message": "给我制作一个高尔夫落地页"
+    },
+    "todo": {
+      "title": "极简待办应用",
+      "message": "给我制作一个极简、现代风格的 todo list 应用，使用浏览器 LocalStorage 存储数据"
+    },
+    "blog": {
+      "title": "博客网站",
+      "message": "给我制作一个博客网站，使用 Next.js 作为全栈框架，PostgreSQL 作为数据库"
+    },
+    "estate": {
+      "title": "房产预约看房",
+      "message": "给我制作一个房地产项目预约看房应用，使用 Next.js 作为全栈框架，PostgreSQL 作为数据库"
+    }
+  },
+  "language": {
+    "switchTo": "English"
+  }
+}

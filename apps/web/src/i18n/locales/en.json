@@ -1,0 +1,208 @@
+{
+  "app": {
+    "loading": "Loading...",
+    "turnInterrupted": "Turn interrupted",
+    "dragToResize": "Drag to resize",
+    "proceedWithPlan": "Proceed with the plan.",
+    "errors": {
+      "unableToStartTurn": "Unable to start turn",
+      "unableToInterrupt": "Unable to interrupt",
+      "unableToProceed": "Unable to proceed",
+      "failedClarification": "Failed to submit clarification",
+      "unableToConfigureIde": "Unable to configure code editor",
+      "unableToRestartWorkspace": "Unable to restart workspace",
+      "unableToOpenBrowser": "Unable to open browser",
+      "unableToStopBrowser": "Unable to stop browser",
+      "unableToStartWorkspace": "Unable to start workspace",
+      "failedToLoadProject": "Failed to load project",
+      "apiNotReady": "API is not ready"
+    }
+  },
+  "login": {
+    "signInWithEmail": "Sign in with your email",
+    "enterInviteCode": "Enter your invite code to join",
+    "enterCodeSentTo": "Enter the code sent to {{email}}",
+    "emailPlaceholder": "you@example.com",
+    "inviteCodePlaceholder": "Invite code",
+    "codePlaceholder": "ABC123",
+    "continue": "Continue",
+    "verify": "Verify",
+    "checking": "Checking...",
+    "verifying": "Verifying...",
+    "devLogin": "Dev Login",
+    "back": "Back",
+    "resendIn": "Resend in {{seconds}}s",
+    "resendCode": "Resend code",
+    "errors": {
+      "invalidInviteCode": "Invalid invite code",
+      "invalidOrExpiredInvite": "Invalid or expired invite code",
+      "verificationFailed": "Verification failed",
+      "failedToSendCode": "Failed to send code",
+      "failedToResendCode": "Failed to resend code"
+    }
+  },
+  "chat": {
+    "newProject": "New Project",
+    "apiOffline": "API offline",
+    "sendMessage": "Send a message...",
+    "typeNextMessage": "Type your next message...",
+    "discoverIntent": "Help me figure it out",
+    "rediscoverIntent": "Re-discover",
+    "describeWhatToBuild": "Describe what you want to build...",
+    "welcomeSubtitle": "Describe what you want to build — Polaris Agent will help you create it.",
+    "agentIsWorking": "Polaris is working",
+    "loadEarlierMessages": "Load earlier messages",
+    "toSend": "to send",
+    "jumpToLatest": "Jump to latest",
+    "stopCurrentTurn": "Stop current turn",
+    "proceed": "Proceed",
+    "orTypeAdjustments": "or type adjustments below",
+    "menu": {
+      "switchProject": "Switch project",
+      "moreActions": "More actions",
+      "newProject": "New project",
+      "deployments": "Deployments",
+      "restartWorkspace": "Restart workspace",
+      "signOut": "Sign out"
+    },
+    "restartConfirm": {
+      "title": "Restart workspace?",
+      "body": "The code editor and any running dev server will go down for a few seconds before coming back up. Your code, git history, and chat are preserved.",
+      "confirm": "Restart",
+      "cancel": "Cancel"
+    },
+    "tabs": {
+      "browser": "Browser",
+      "ide": "Code editor",
+      "hide": "Hide"
+    }
+  },
+  "editor": {
+    "loading": "Loading code editor...",
+    "starting": "Starting workspace code editor...",
+    "waitingForProject": "Code editor will open after you create a project.",
+    "waitingForAgent": "Code editor will open when the agent needs it.",
+    "failed": "Workspace code editor failed to start."
+  },
+  "browser": {
+    "loading": "Loading browser...",
+    "starting": "Starting browser session...",
+    "waitingForProject": "Browser will open after you create a project.",
+    "waitingForAgent": "Browser will open when the agent needs it.",
+    "agentTesting": "Agent is testing...",
+    "openBrowser": "Open browser",
+    "opening": "Opening...",
+    "unavailable": "unavailable",
+    "sessionIs": "Browser session is {{status}}."
+  },
+  "items": {
+    "agentMessage": "Agent message",
+    "planning": "Planning",
+    "reasoning": "Reasoning",
+    "executeCommand": "Execute command",
+    "fileChange": "File change",
+    "toolCall": "Tool call",
+    "internalCall": "Internal call",
+    "webSearch": "Web search",
+    "clarification": "Clarification",
+    "error": "Error",
+    "step": "Agent activity",
+    "clarifying": "Clarifying questions",
+    "references": "Searching design references",
+    "moodBoard": "Design mood board",
+    "compiled": "Design brief",
+    "details": "Details",
+    "commandAndOutput": "Command and output",
+    "commandExitOutput": "Command, exit {{exit}}, output",
+    "pathAndDiff": "Path and diff",
+    "nFiles": "{{count}} files",
+    "add": "add",
+    "delete": "delete",
+    "update": "update",
+    "unnamed": "(unnamed)",
+    "noDiff": "(no diff)",
+    "planTabs": {
+      "plain": "Overview",
+      "technical": "Details"
+    }
+  },
+  "status": {
+    "running": "Running",
+    "queued": "Queued",
+    "completed": "Completed",
+    "failed": "Failed",
+    "interrupted": "Interrupted",
+    "idle": "Idle"
+  },
+  "publish": {
+    "title": "Publish",
+    "description": "Publish your project to the internet so anyone can see it. We'll assign a temporary random domain for now.",
+    "current": "Current",
+    "neverPublished": "never published",
+    "requestButton": "Publish now",
+    "requestMessage": "Please publish this project.",
+    "agentBusy": "Agent is working — wait until it finishes, then publish.",
+    "history": "History",
+    "noDeployments": "no deployments yet",
+    "rollbackConfirm": "Rollback to {{commit}}? This replaces the live version.",
+    "errors": {
+      "loadFailed": "failed to load deployments",
+      "publishFailed": "publish failed",
+      "rollbackFailed": "rollback failed"
+    },
+    "statuses": {
+      "queued": "queued",
+      "building": "building",
+      "deploying": "deploying",
+      "ready": "ready",
+      "failed": "failed",
+      "rolledBack": "rolled back"
+    }
+  },
+  "projects": {
+    "title": "Projects",
+    "new": "New",
+    "empty": "No projects yet. Click \"New\" to create one.",
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago"
+  },
+  "clarification": {
+    "overrideLabel": "Or tell Polaris what to do",
+    "continue": "Continue",
+    "next": "Next",
+    "back": "Back"
+  },
+  "statusBar": {
+    "fileChanges": "File changes",
+    "testCalls": "Test calls"
+  },
+  "quota": {
+    "title": "Concurrency limit reached",
+    "userBody": "You're already running {{limit}} active session(s). Wait for one to finish, then try again.",
+    "platformBody": "Polaris is busy ({{limit}} concurrent sessions in flight). Please try again in a moment.",
+    "ok": "Got it"
+  },
+  "examples": {
+    "golf": {
+      "title": "Golf landing page",
+      "message": "Build me a golf landing page."
+    },
+    "todo": {
+      "title": "Minimalist todo app",
+      "message": "Build me a minimalist, modern to-do list app. Persist data in the browser via LocalStorage."
+    },
+    "blog": {
+      "title": "Blog website",
+      "message": "Build me a blog website. Use Next.js as the full-stack framework and PostgreSQL as the database."
+    },
+    "estate": {
+      "title": "Real-estate viewing booking",
+      "message": "Build me a real-estate project viewing-booking app. Use Next.js as the full-stack framework and PostgreSQL as the database."
+    }
+  },
+  "language": {
+    "switchTo": "中文"
+  }
+}

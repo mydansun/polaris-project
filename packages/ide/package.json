@@ -1,0 +1,53 @@
+{
+  "name": "@polaris/ide",
+  "version": "0.0.1",
+  "private": true,
+  "theia": {
+    "frontend": {
+      "config": {
+        "applicationName": "Polaris IDE",
+        "preferences": {
+          "security.workspace.trust.enabled": false,
+          "files.enableTrash": false,
+          "workbench.statusBar.visible": false,
+          "window.menuBarVisibility": "hidden",
+          "workbench.colorTheme": "Default Light Modern",
+          "explorer.autoReveal": true
+        },
+        "reloadOnReconnect": true
+      }
+    },
+    "backend": {
+      "config": {
+        "startupTimeout": -1,
+        "resolveSystemPlugins": false
+      }
+    }
+  },
+  "dependencies": {
+    "@theia/core": "1.70.0",
+    "@theia/editor": "1.70.0",
+    "@theia/filesystem": "1.70.0",
+    "@theia/monaco": "1.70.0",
+    "@theia/navigator": "1.70.0",
+    "@theia/search-in-workspace": "1.70.0",
+    "@theia/file-search": "1.70.0",
+    "@theia/workspace": "1.70.0",
+    "@theia/messages": "1.70.0",
+    "@theia/preferences": "1.70.0",
+    "@theia/getting-started": "1.70.0",
+    "@theia/process": "1.70.0"
+  },
+  "devDependencies": {
+    "@theia/cli": "1.70.0",
+    "@theia/native-webpack-plugin": "1.70.0"
+  },
+  "scripts": {
+    "compile": "tsc -b",
+    "rebuild": "theia rebuild:browser",
+    "generate": "theia generate",
+    "build": "tsc -b && theia rebuild:browser && theia generate && node scripts/inject-modules.js && theia copy && webpack --mode production",
+    "start": "theia start --hostname 0.0.0.0 --port 3000",
+    "test": "node tests/ide.spec.mjs"
+  }
+}

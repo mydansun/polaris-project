@@ -1,0 +1,60 @@
+# Main site routes for the polaris-dev.xyz root domain (dev plane).
+# Replaces the old nginx server block that proxied:
+#   polaris-dev.xyz/        → host vite dev server :5173
+#   polaris-dev.xyz/api/*   → host FastAPI :8000, prefix stripped
+#
+# Uses the docker-internal host-gateway so traefik can reach processes
+# bound to host :5173 / :8000. See extra_hosts in ../compose.yaml.
+
+http:
+  routers:
+    main-api:
+      # PathPrefix match must beat the catch-all `/` rule — traefik scores
+      # routers by rule length, so explicit PathPrefix naturally wins.
+      rule: "Host(`polaris-dev.xyz`) && PathPrefix(`/api/`)"
+      entryPoints: [websecure]
+      tls: {}
+      middlewares: [strip-api-prefix]
+      service: main-api
+
+    main-vite:
+      rule: "Host(`polaris-dev.xyz`)"
+      entryPoints: [websecure]
+      tls: {}
+      service: main-vite
+
+    # www.polaris-dev.xyz → polaris-dev.xyz (301, path + query preserved).
+    # The *.polaris-dev.xyz wildcard cert covers the www hostname so TLS
+    # terminates cleanly before the middleware short-circuits with a 301.
+    # `service:` is required by schema but never reached — the middleware
+    # responds before the request gets forwarded.
+    main-www-redirect:
+      rule: "Host(`www.polaris-dev.xyz`)"
+      entryPoints: [websecure]
+      tls: {}
+      middlewares: [redirect-www-to-apex]
+      service: main-vite
+
+  services:
+    main-api:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8000"
+        passHostHeader: true
+
+    main-vite:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:5173"
+        passHostHeader: true
+
+  middlewares:
+    strip-api-prefix:
+      stripPrefix:
+        prefixes: ["/api"]
+
+    redirect-www-to-apex:
+      redirectRegex:
+        regex: "^https?://www\\.polaris-dev\\.xyz/(.*)"
+        replacement: "https://polaris-dev.xyz/${1}"
+        permanent: true

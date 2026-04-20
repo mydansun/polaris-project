@@ -1,0 +1,41 @@
+# TLS certificate store — loaded via file provider (watch:true), so
+# replacing a cert + editing this file triggers a hot reload without
+# restarting traefik.
+#
+# Certs come from Let's Encrypt on the host at /etc/letsencrypt/, mounted
+# read-only into the traefik container at the same path (see ../compose.yaml).
+# The whole /etc/letsencrypt tree is mounted because live/*.pem are symlinks
+# into archive/ — mounting just live/ would break the symlinks.
+#
+# Three cert pairs are required because wildcard SANs only match one label:
+#   *.polaris-dev.xyz         — dev plane   (polaris-dev.xyz + ide-*/browser-*)
+#   *.prod.polaris-dev.xyz    — publish     (<uuid>.prod.polaris-dev.xyz)
+#   *.s3.polaris-dev.xyz      — object API  (s3.polaris-dev.xyz + virtual-host buckets)
+#
+# Issue / renew with certbot (DNS-01 for the wildcards):
+#   certbot certonly --manual --preferred-challenges dns \
+#     -d polaris-dev.xyz -d "*.polaris-dev.xyz"
+#   certbot certonly --manual --preferred-challenges dns \
+#     -d prod.polaris-dev.xyz -d "*.prod.polaris-dev.xyz"
+#   certbot certonly --manual --preferred-challenges dns \
+#     -d s3.polaris-dev.xyz -d "*.s3.polaris-dev.xyz"
+
+tls:
+  certificates:
+    - certFile: /etc/letsencrypt/live/polaris-dev.xyz/fullchain.pem
+      keyFile:  /etc/letsencrypt/live/polaris-dev.xyz/privkey.pem
+      stores:
+        - default
+    - certFile: /etc/letsencrypt/live/prod.polaris-dev.xyz/fullchain.pem
+      keyFile:  /etc/letsencrypt/live/prod.polaris-dev.xyz/privkey.pem
+      stores:
+        - default
+    - certFile: /etc/letsencrypt/live/s3.polaris-dev.xyz/fullchain.pem
+      keyFile:  /etc/letsencrypt/live/s3.polaris-dev.xyz/privkey.pem
+      stores:
+        - default
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/letsencrypt/live/polaris-dev.xyz/fullchain.pem
+        keyFile:  /etc/letsencrypt/live/polaris-dev.xyz/privkey.pem

@@ -1,0 +1,5 @@
+{
+  "browser": {
+    "cdpEndpoint": "http://chromium-vnc:9223"
+  }
+}

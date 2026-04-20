@@ -1,0 +1,9 @@
+# User-project production compose (static).
+# NOTE: any host-published `ports:` you (or the agent) add to a service
+# here will be stripped automatically at publish time — traefik owns the
+# host ingress (80/443) so host publishes would collide.
+
+services:
+  __POLARIS_SERVICE__:
+    build: .
+    restart: unless-stopped

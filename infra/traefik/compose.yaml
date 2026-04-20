@@ -1,0 +1,52 @@
+# Polaris edge router — traefik v3 as the single ingress for both dev
+# (ide-*.polaris-dev.xyz, browser-*.polaris-dev.xyz, polaris-dev.xyz) and
+# prod (<uuid>.prod.polaris-dev.xyz) planes.
+#
+# Two external networks:
+#   - polaris-internal   : shared with per-workspace compose projects, so
+#                        traefik can reach ide/browser containers by name.
+#                        Created by docker-compose.infra.yaml.
+#   - traefik-public   : created here; any published user compose joins
+#                        it as external so labels get picked up by the
+#                        docker provider.
+#
+# Certs come from Let's Encrypt on the host under /etc/letsencrypt/,
+# mounted read-only. The entire /etc/letsencrypt tree is mounted (not
+# just live/) because live/*.pem are symlinks into archive/ — mounting
+# only live/ would leave the symlinks dangling inside the container.
+# See dynamic/certs.yaml for the issuance / renewal commands.
+
+services:
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8090:8090"              # dashboard (api.insecure) on 0.0.0.0 for LAN visibility
+    extra_hosts:
+      # Reach host-bound services (vite :5173, api :8000) from inside the
+      # container so traefik can proxy them for the polaris-dev.xyz root domain.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik.yaml:/etc/traefik/traefik.yaml:ro
+      - ./dynamic:/etc/traefik/dynamic:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    networks:
+      - traefik-public
+      - polaris-internal
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8090/ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  traefik-public:
+    name: traefik-public
+    driver: bridge
+  polaris-internal:
+    name: polaris-internal
+    external: true

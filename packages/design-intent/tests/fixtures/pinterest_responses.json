@@ -1,0 +1,52 @@
+{
+  "real_estate_landing_page_white": {
+    "query": "real estate landing page white",
+    "hops": 1,
+    "count": 4,
+    "results": [
+      {
+        "id": "pin-001",
+        "title": "Luxury coastal estate landing page, airy whites",
+        "max": "https://example.com/max/pin-001.jpg",
+        "normal": "https://example.com/normal/pin-001.jpg"
+      },
+      {
+        "id": "pin-002",
+        "title": "Minimal villa hero, editorial serif",
+        "max": "https://example.com/max/pin-002.jpg",
+        "normal": "https://example.com/normal/pin-002.jpg"
+      },
+      {
+        "id": "pin-003",
+        "title": "Private residences — cream palette, generous whitespace",
+        "max": "https://example.com/max/pin-003.jpg",
+        "normal": "https://example.com/normal/pin-003.jpg"
+      },
+      {
+        "id": "pin-004",
+        "title": "Real estate portfolio grid with serif headings",
+        "max": "https://example.com/max/pin-004.jpg",
+        "normal": "https://example.com/normal/pin-004.jpg"
+      }
+    ]
+  },
+  "real_estate_website_beige": {
+    "query": "real estate website beige luxury",
+    "hops": 1,
+    "count": 2,
+    "results": [
+      {
+        "id": "pin-002",
+        "title": "Minimal villa hero, editorial serif (duplicate id for dedupe test)",
+        "max": "https://example.com/max/pin-002.jpg",
+        "normal": "https://example.com/normal/pin-002.jpg"
+      },
+      {
+        "id": "pin-005",
+        "title": "Beige architectural landing, split hero",
+        "max": "https://example.com/max/pin-005.jpg",
+        "normal": "https://example.com/normal/pin-005.jpg"
+      }
+    ]
+  }
+}

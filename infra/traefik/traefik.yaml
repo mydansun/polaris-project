@@ -1,0 +1,65 @@
+# Traefik static configuration. Reloaded only on restart.
+# For runtime-updated things (routes, certs), use dynamic/ (file provider)
+# or container labels (docker provider).
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    transport:
+      respondingTimeouts:
+        # SSE + vite HMR + Theia WebSocket need long idle timeouts.
+        # Same value the old nginx used (proxy_read_timeout 3600s).
+        idleTimeout: "3600s"
+        readTimeout:  "3600s"
+        writeTimeout: "3600s"
+  # Declare the internal "traefik" entrypoint explicitly on a non-default
+  # port. Without this, traefik auto-creates it on :8080 AND api.insecure
+  # spawns a second listener on localhost:8080 for the dashboard — they
+  # collide ("bind: address already in use"). Using 8090 side-steps the
+  # overlap entirely. Dashboard is reachable at http://<host>:8090/.
+  traefik:
+    address: ":8090"
+
+# Dashboard / API. insecure=true + ports 8080 on 0.0.0.0 is fine for demo
+# (LAN visibility is desired); do NOT leave this in a prod deployment.
+api:
+  dashboard: true
+  insecure: true
+
+ping:
+  entryPoint: traefik
+
+providers:
+  docker:
+    exposedByDefault: false        # only containers with traefik.enable=true
+    network: traefik-public        # which network traefik uses to reach them
+    watch: true
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+# Body size limit matches nginx's client_max_body_size 100m.
+# Applied globally via a default serversTransport with dial timeouts.
+serversTransport:
+  # Long dial/response header timeouts so SSE never prematurely fails.
+  forwardingTimeouts:
+    dialTimeout: "30s"
+    responseHeaderTimeout: "0s"    # unlimited — SSE / WS
+
+log:
+  level: INFO
+
+accessLog:
+  format: common

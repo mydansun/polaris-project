@@ -1,0 +1,21 @@
+{
+  "name": "polaris",
+  "private": true,
+  "packageManager": "pnpm@10.17.0",
+  "scripts": {
+    "dev:web": "pnpm --filter @polaris/web dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "pnpm -r --if-present lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "^19.0.0",
+      "@types/react-dom": "^19.0.0"
+    }
+  }
+}
+

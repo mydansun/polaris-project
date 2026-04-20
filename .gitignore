@@ -1,0 +1,31 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.idea
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+*.log
+
+# mkcert-generated TLS cert pairs — regenerate locally per dev machine
+certs/*.pem
+
+# Runtime data — workspaces, workspace meta, publish projects.
+# All project state lives here so the project is self-contained.
+.data/
+
+# MinIO bind-mount data
+infra/minio/data/

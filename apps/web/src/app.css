@@ -1,0 +1,116 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@iconify/tailwind4";
+@source "../../../packages/ui/src/**/*.tsx";
+
+@theme {
+  --color-surface: #fbfcfd;
+  --color-surface-alt: #f8fafb;
+  --color-surface-accent: #eef5f1;
+  --color-border: #c9d1d9;
+  --color-border-light: #b8c2cc;
+  --color-text-primary: #1a1f2b;
+  --color-text-muted: #516174;
+  --color-accent: #1f6feb;
+  --color-success: #2f6f62;
+  --color-success-light: #dcefeb;
+  --color-error: #b42318;
+  --color-error-light: #fff0ee;
+  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: var(--color-text-primary);
+    background: #f4f6f8;
+  }
+
+  [class*="icon-["] {
+    flex-shrink: 0;
+    vertical-align: -0.125em;
+  }
+}
+
+/* Animated conic-gradient border used on in-progress cards.  Two
+ * backgrounds stack: the inner white (padding-box) is the card body, the
+ * outer conic (border-box) is the perpetual rainbow border.  A custom
+ * property is animated so the conic rotates continuously — this needs
+ * `@property` registration so the browser knows it's an angle and can
+ * interpolate it. */
+@property --border-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes border-spin {
+  to {
+    --border-angle: 360deg;
+  }
+}
+
+.running-border {
+  /* Neutralize the default border on Card — we paint our own via the
+   * conic gradient, so any 1px border class would double-outline. */
+  border-color: transparent !important;
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    conic-gradient(
+      from var(--border-angle),
+      #60a5fa 0deg,
+      #a78bfa 90deg,
+      #f472b6 180deg,
+      #34d399 270deg,
+      #60a5fa 360deg
+    ) border-box;
+  border-width: 3px;
+  border-style: solid;
+  animation: border-spin 3s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .running-border {
+    animation: none;
+  }
+}
+
+/* StatusBar count animations.
+ * `count-float` = floating "+N" above the number, fades up + out.
+ * `count-pulse` = brief scale bump on the main number when a delta arrives.
+ */
+@keyframes count-float {
+  0%   { opacity: 0;   transform: translateY(0);    }
+  18%  { opacity: 1;   transform: translateY(-4px); }
+  100% { opacity: 0;   transform: translateY(-14px);}
+}
+.animate-count-float {
+  animation: count-float 700ms ease-out both;
+}
+
+@keyframes count-pulse {
+  0%   { transform: scale(1);    }
+  30%  { transform: scale(1.14); }
+  100% { transform: scale(1);    }
+}
+.animate-count-pulse {
+  animation: count-pulse 320ms ease-out both;
+  display: inline-block;  /* scale transforms need a block-ish host */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-count-float,
+  .animate-count-pulse {
+    animation: none;
+  }
+}

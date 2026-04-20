@@ -1,0 +1,36 @@
+# Polaris publish manifest. Platform reads this to know how to build, route,
+# and secret your project. Commit this file; it's the contract.
+#
+# All fields below are required unless marked "optional".
+
+version: 1
+
+# Stack hint. Used by the platform to pick sensible defaults and to help
+# future tools (audit, smoke tests) understand your repo.
+#   node | python | static | custom
+stack: node
+
+# Build / start commands. The Dockerfile renders __POLARIS_BUILD_CMD__ and
+# __POLARIS_START_CMD_JSON__ from these (the CLI fills them in on scaffold).
+build: "__POLARIS_BUILD_CMD__"
+start: "__POLARIS_START_CMD__"
+
+# Port your app listens on inside its container. Must match compose.prod.yml.
+port: __POLARIS_PORT__
+
+# Optional: dependency services the platform should provision for you.
+# Supported today: postgres, redis. Leave empty for stateless apps.
+deps: []
+
+# Secrets the platform will generate on first publish and persist on the
+# prod host (never committed). Your app reads them at runtime via env.
+# For DATABASE_URL + REDIS_URL: the platform composes the URL for you.
+secrets: []
+
+# Optional: static (non-sensitive) env vars baked into deploys.
+env: {}
+
+# Which service in compose.prod.yml to publicly expose through traefik.
+publish:
+  service: __POLARIS_SERVICE__
+  port: __POLARIS_PORT__

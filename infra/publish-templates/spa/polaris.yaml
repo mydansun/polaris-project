@@ -1,0 +1,11 @@
+version: 1
+stack: spa
+build: "__POLARIS_BUILD_CMD__"
+start: ""
+port: 80
+deps: []
+secrets: []
+env: {}
+publish:
+  service: __POLARIS_SERVICE__
+  port: 80

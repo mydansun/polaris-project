@@ -1,0 +1,30 @@
+# nginx sidecar that serves the prebuilt apps/web/dist/ bundle on
+# staging hosts (web is `pnpm dev:web` / Vite only in local dev).
+#
+# The bind-mount path is relative to this compose file's directory, so
+# the file is host-invariant and can be tracked: `../../apps/web/dist`
+# resolves to <repo>/apps/web/dist no matter where the repo lives.
+#
+# Lifecycle: managed by `make staging` (up), `make stop`, and
+# `scripts/down.sh` — see docs/STAGING.md §4.3.
+
+services:
+  polaris-web:
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    container_name: polaris-web
+    # Match the host deploy user (UID 1000) so the read-only bind-mount
+    # is traversable.  The default nginx UID (101) cannot cross a
+    # UID-1000-owned home dir even with world-readable files inside.
+    user: "1000:1000"
+    restart: unless-stopped
+    volumes:
+      - ../../apps/web/dist:/usr/share/nginx/html:ro
+    # Joined directly to traefik's docker network; no host port binding
+    # needed.  Traefik resolves `polaris-web` via docker embedded DNS.
+    networks:
+      - traefik-public
+
+networks:
+  traefik-public:
+    name: traefik-public
+    external: true
