@@ -376,20 +376,226 @@ def materialize_secrets(project_id: UUID, settings: Settings, manifest: PolarisM
 # ─── User compose sanitizer ─────────────────────────────────────────────────
 
 
-def sanitize_prod_compose(archive_dir: Path, log_sink: list[str]) -> None:
-    """Strip any host-published ports from the user's ``compose.prod.yml``.
+# Platform-owned networks that user compose must not attach to. A user
+# joining these could hijack traefik routing or reach internal services.
+_PLATFORM_OWNED_NETWORKS = frozenset({
+    "traefik-public",
+    "polaris-internal",
+    "polaris-prod_default",
+})
 
-    Prod containers must be reachable only via the ``traefik-public``
-    docker network — host port publishing (e.g. ``ports: ["80:80"]``)
-    collides with the platform's Traefik which already holds the host
-    ingress (80 / 443).  Drop the whole ``ports:`` list on every service
-    unconditionally; keep ``expose:`` (internal-only hint, no host
-    binding) untouched.
+# Service-level fields that enable host escape / privilege escalation.
+# Web apps never need any of these.
+_FORBIDDEN_ESCAPE_KEYS = (
+    "privileged",
+    "cap_add",
+    "security_opt",
+    "devices",
+    "device_cgroup_rules",
+)
+
+# Service-level fields that can exhaust host resources.
+_FORBIDDEN_RESOURCE_KEYS = (
+    "shm_size",
+    "ulimits",
+    "sysctls",
+)
+
+# Service-level keys that, when set to "host", share a namespace with the
+# host and break container isolation.
+_HOST_NAMESPACE_KEYS = (
+    "pid", "ipc", "uts", "cgroup", "userns_mode", "network_mode",
+)
+
+
+def _is_bind_volume(entry) -> bool:
+    """True when a compose volume entry mounts a host path (vs named volume)."""
+    if isinstance(entry, str):
+        parts = entry.split(":", 2)
+        if len(parts) >= 2:
+            source = parts[0]
+            if source.startswith(("/", "./", "../", "~")):
+                return True
+        return False
+    if isinstance(entry, dict):
+        return entry.get("type") == "bind"
+    return False
+
+
+def _filter_traefik_labels(labels):
+    """Return (kept, removed_keys). Accepts dict or list of 'k=v' strings."""
+    if isinstance(labels, dict):
+        removed = [k for k in labels if isinstance(k, str) and k.startswith("traefik.")]
+        kept = {k: v for k, v in labels.items() if k not in removed}
+        return kept, removed
+    if isinstance(labels, list):
+        removed: list = []
+        kept: list = []
+        for item in labels:
+            if isinstance(item, str) and item.split("=", 1)[0].strip().startswith("traefik."):
+                removed.append(item)
+            else:
+                kept.append(item)
+        return kept, removed
+    return labels, []
+
+
+def _external_net_name(net_cfg: dict, fallback: str) -> str:
+    """Resolve a network's external name for block-list comparison."""
+    ext = net_cfg.get("external")
+    if isinstance(ext, dict):
+        return ext.get("name", fallback)
+    if ext is True:
+        return net_cfg.get("name", fallback)
+    return fallback
+
+
+def _sanitize_service(name: str, svc: dict, log: list[str]) -> bool:
+    changed = False
+
+    # Host port publishing — traefik holds 80/443.
+    if svc.pop("ports", None):
+        log.append(
+            f"[sanitize] stripped ports from '{name}' — traefik handles ingress.\n"
+        )
+        changed = True
+
+    # Privilege / capability / seccomp / device escapes.
+    for key in _FORBIDDEN_ESCAPE_KEYS:
+        if key in svc:
+            log.append(
+                f"[sanitize] stripped {key!r} from '{name}' — not permitted "
+                f"on a shared host.\n"
+            )
+            svc.pop(key)
+            changed = True
+
+    # Resource-exhaustion vectors (raw ulimits / sysctls / shm).
+    for key in _FORBIDDEN_RESOURCE_KEYS:
+        if key in svc:
+            log.append(
+                f"[sanitize] stripped {key!r} from '{name}' — resource "
+                f"limits are platform-managed.\n"
+            )
+            svc.pop(key)
+            changed = True
+
+    # Namespace sharing with the host (pid/ipc/uts/cgroup/userns/network).
+    for key in _HOST_NAMESPACE_KEYS:
+        val = svc.get(key)
+        if isinstance(val, str) and val.strip() == "host":
+            log.append(
+                f"[sanitize] stripped {key}: host from '{name}' — sharing "
+                f"namespaces with the host is not allowed.\n"
+            )
+            svc.pop(key)
+            changed = True
+
+    # Volume bind mounts — only named volumes + tmpfs allowed.
+    vols = svc.get("volumes")
+    if isinstance(vols, list):
+        stripped = [v for v in vols if _is_bind_volume(v)]
+        if stripped:
+            kept = [v for v in vols if not _is_bind_volume(v)]
+            log.append(
+                f"[sanitize] stripped host bind mounts from '{name}': "
+                f"{stripped!r} — use named volumes only.\n"
+            )
+            if kept:
+                svc["volumes"] = kept
+            else:
+                svc.pop("volumes")
+            changed = True
+
+    # traefik.* labels — domain hijack / cross-tenant routing vector.
+    labels = svc.get("labels")
+    if labels:
+        kept_labels, removed_labels = _filter_traefik_labels(labels)
+        if removed_labels:
+            log.append(
+                f"[sanitize] stripped traefik.* labels from '{name}': "
+                f"{removed_labels!r} — routing is platform-managed.\n"
+            )
+            if kept_labels:
+                svc["labels"] = kept_labels
+            else:
+                svc.pop("labels")
+            changed = True
+
+    # Service-level references to platform-owned networks.
+    svc_nets = svc.get("networks")
+    if isinstance(svc_nets, list):
+        dropped = [n for n in svc_nets if n in _PLATFORM_OWNED_NETWORKS]
+        if dropped:
+            kept = [n for n in svc_nets if n not in _PLATFORM_OWNED_NETWORKS]
+            log.append(
+                f"[sanitize] removed platform network refs from '{name}': "
+                f"{dropped!r} — platform injects these via override.\n"
+            )
+            if kept:
+                svc["networks"] = kept
+            else:
+                svc.pop("networks")
+            changed = True
+    elif isinstance(svc_nets, dict):
+        dropped = [n for n in list(svc_nets.keys()) if n in _PLATFORM_OWNED_NETWORKS]
+        for n in dropped:
+            svc_nets.pop(n)
+        if dropped:
+            log.append(
+                f"[sanitize] removed platform network refs from '{name}': "
+                f"{dropped!r} — platform injects these via override.\n"
+            )
+            if not svc_nets:
+                svc.pop("networks")
+            changed = True
+
+    return changed
+
+
+def _sanitize_top_level_networks(networks: dict, log: list[str]) -> bool:
+    changed = False
+    for net_name in list(networks.keys()):
+        net_cfg = networks[net_name]
+        if not isinstance(net_cfg, dict):
+            continue
+
+        # User-reserved subnet — platform owns the address pool.
+        if "ipam" in net_cfg:
+            log.append(
+                f"[sanitize] stripped ipam from network '{net_name}' — "
+                f"subnet is platform-managed.\n"
+            )
+            net_cfg.pop("ipam")
+            changed = True
+
+        # Attempts to attach to platform-owned externals by name.
+        if net_cfg.get("external"):
+            ext_name = _external_net_name(net_cfg, net_name)
+            if ext_name in _PLATFORM_OWNED_NETWORKS:
+                log.append(
+                    f"[sanitize] removed external platform network "
+                    f"'{net_name}' (name={ext_name!r}) — not joinable "
+                    f"from user compose.\n"
+                )
+                networks.pop(net_name)
+                changed = True
+    return changed
+
+
+def sanitize_prod_compose(archive_dir: Path, log_sink: list[str]) -> None:
+    """Strip unsafe fields from user-supplied ``compose.prod.yml``.
+
+    Polaris only publishes web apps; users have no legitimate reason to
+    declare anything outside a narrow allowed set (``image`` / ``build``,
+    ``command``, ``env_file``, ``healthcheck``, ``expose``,
+    ``depends_on``). Anything that lets a container escape its sandbox,
+    starve the host, or attach to platform networks (domain hijack) is
+    stripped unconditionally. Each removal appends a line to
+    ``log_sink`` so the user sees it in the PublishPanel live log stream.
 
     No-op when ``compose.prod.yml`` is absent or unparseable — downstream
     ``docker compose`` will surface the real error with its own wording.
-    Each removal appends a line to ``log_sink`` so the user sees it in
-    the PublishPanel live log stream.
     """
     compose_path = archive_dir / "compose.prod.yml"
     if not compose_path.is_file():
@@ -399,41 +605,18 @@ def sanitize_prod_compose(archive_dir: Path, log_sink: list[str]) -> None:
     except yaml.YAMLError as exc:
         log_sink.append(f"[sanitize] skipped: invalid YAML ({exc})\n")
         return
-    services = doc.get("services")
-    if not isinstance(services, dict):
-        return
 
     changed = False
-    for name, svc in services.items():
-        if not isinstance(svc, dict):
-            continue
-        ports = svc.get("ports")
-        if ports:
-            log_sink.append(
-                f"[sanitize] stripped host ports from service '{name}': "
-                f"{ports!r} — traefik reaches the container via the "
-                f"traefik-public network, no host publish needed.\n"
-            )
-            svc.pop("ports", None)
-            changed = True
 
-    # Strip user-declared subnets. The host's docker address pool is a
-    # shared resource (default pools give only ~31 total bridge networks);
-    # a user reserving a /16 or /24 eats slots other publishes need. Let
-    # compose allocate from the daemon's default pool. Named networks
-    # themselves are fine — only the ipam block is removed.
-    networks = doc.get("networks")
-    if isinstance(networks, dict):
-        for net_name, net_cfg in networks.items():
-            if not isinstance(net_cfg, dict):
-                continue
-            if "ipam" in net_cfg:
-                log_sink.append(
-                    f"[sanitize] stripped ipam block from network "
-                    f"'{net_name}' — subnet assignment is platform-managed.\n"
-                )
-                net_cfg.pop("ipam", None)
+    services = doc.get("services")
+    if isinstance(services, dict):
+        for name, svc in services.items():
+            if isinstance(svc, dict) and _sanitize_service(name, svc, log_sink):
                 changed = True
+
+    networks = doc.get("networks")
+    if isinstance(networks, dict) and _sanitize_top_level_networks(networks, log_sink):
+        changed = True
 
     if changed:
         compose_path.write_text(yaml.safe_dump(doc, sort_keys=False))
@@ -473,6 +656,17 @@ def render_prod_override(
         # redis below) already carry this; without it on the user service,
         # published sites vanish on any docker restart.
         "    restart: unless-stopped",
+        # Zero-trust hardening for untrusted user code on a shared host.
+        # Compose overrides scalars and replaces list values, so these
+        # win even if the user writes conflicting keys in compose.prod.yml
+        # (and sanitize_prod_compose has already stripped most of them).
+        "    cap_drop:",
+        "      - ALL",
+        "    security_opt:",
+        "      - no-new-privileges:true",
+        "    mem_limit: 2g",
+        "    cpus: 2.0",
+        "    pids_limit: 512",
         "    env_file:",
         f"      - {secrets_file}",
         "    networks:",
@@ -565,6 +759,16 @@ def render_preview_override(
         f"  {service}:",
         f"    image: {image}",
         "    pull_policy: never  # local image, not yet pushed",
+        # Same zero-trust hardening as render_prod_override. Smoke runs
+        # user code on the publish worker's host — a compromised smoke
+        # could exhaust the worker without these caps.
+        "    cap_drop:",
+        "      - ALL",
+        "    security_opt:",
+        "      - no-new-privileges:true",
+        "    mem_limit: 2g",
+        "    cpus: 2.0",
+        "    pids_limit: 512",
         "    env_file:",
         f"      - {secrets_file}",
     ]
