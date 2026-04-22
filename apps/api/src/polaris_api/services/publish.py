@@ -417,6 +417,24 @@ def sanitize_prod_compose(archive_dir: Path, log_sink: list[str]) -> None:
             svc.pop("ports", None)
             changed = True
 
+    # Strip user-declared subnets. The host's docker address pool is a
+    # shared resource (default pools give only ~31 total bridge networks);
+    # a user reserving a /16 or /24 eats slots other publishes need. Let
+    # compose allocate from the daemon's default pool. Named networks
+    # themselves are fine — only the ipam block is removed.
+    networks = doc.get("networks")
+    if isinstance(networks, dict):
+        for net_name, net_cfg in networks.items():
+            if not isinstance(net_cfg, dict):
+                continue
+            if "ipam" in net_cfg:
+                log_sink.append(
+                    f"[sanitize] stripped ipam block from network "
+                    f"'{net_name}' — subnet assignment is platform-managed.\n"
+                )
+                net_cfg.pop("ipam", None)
+                changed = True
+
     if changed:
         compose_path.write_text(yaml.safe_dump(doc, sort_keys=False))
 
@@ -723,27 +741,32 @@ async def smoke_test(
         # this is how the agent sees the actual crash reason (e.g.
         # "sh: 1: next: not found") instead of just the opaque curl error.
         # Best-effort; if docker logs itself errors, swallow.
+        # Capture user-container logs best-effort. Wrap the entire block
+        # (not just the _run) so nothing short-circuits the compose-down
+        # below — a leaked preview network consumes a whole /20 of the
+        # daemon's address pool until manually pruned.
         if not probe_succeeded:
-            container = f"{project}-{manifest.publish.service}-1"
-            smoke_log.append(
-                f"\n▶ captured tail of `{container}` container logs:\n"
-            )
             try:
+                container = f"{project}-{manifest.publish.service}-1"
+                smoke_log.append(
+                    f"\n▶ captured tail of `{container}` container logs:\n"
+                )
                 _rc, out, err = await _run(
                     "docker", "logs", "--tail", "200", container,
                     timeout=10, check=False,
                 )
                 combined = (out or "") + (err or "")
                 smoke_log.append(combined if combined else "(no logs captured)\n")
+                smoke_log.append(
+                    "\nHint: look for an exit code, stack trace, or "
+                    "'command not found' line above — that's usually the real "
+                    "root cause, not the curl/probe error.\n"
+                )
             except Exception as exc:  # noqa: BLE001
-                smoke_log.append(f"(failed to fetch docker logs: {exc})\n")
-            smoke_log.append(
-                "\nHint: look for an exit code, stack trace, or "
-                "'command not found' line above — that's usually the real "
-                "root cause, not the curl/probe error.\n"
-            )
+                smoke_log.append(f"(log capture failed: {exc})\n")
         # Always tear down the preview, even on smoke failure, so the next
-        # publish attempt doesn't collide on the compose project name.
+        # publish attempt doesn't collide on the compose project name or
+        # leak the network's subnet.
         try:
             await _run(*compose_args, "down", "-v", "--remove-orphans", timeout=60, check=False)
         except Exception:
