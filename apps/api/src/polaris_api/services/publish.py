@@ -680,6 +680,7 @@ async def smoke_test(
         "-f", str(preview_override),
     ]
 
+    probe_succeeded = False
     try:
         smoke_log.append(f"▶ compose up ({project})\n")
         code = await _run_streaming(
@@ -702,7 +703,6 @@ async def smoke_test(
         ]
         deadline = asyncio.get_event_loop().time() + timeout
         last_err = "never started probing"
-        probe_succeeded = False
         while asyncio.get_event_loop().time() < deadline:
             rc, out, err = await _run(*probe_cmd, timeout=15, check=False)
             if rc == 0:
