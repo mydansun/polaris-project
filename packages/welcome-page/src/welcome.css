@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@theme {
+  --color-polaris-bg: oklch(0.16 0.03 265);
+  --color-polaris-bg-soft: oklch(0.22 0.04 265);
+  --color-polaris-fg: oklch(0.96 0.01 265);
+  --color-polaris-muted: oklch(0.68 0.02 265);
+  --color-polaris-accent: oklch(0.74 0.19 260);
+  --color-polaris-ring: oklch(0.74 0.19 260 / 0.35);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer base {
+  html, body {
+    background: radial-gradient(ellipse at top, var(--color-polaris-bg-soft), var(--color-polaris-bg) 60%);
+    color: var(--color-polaris-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+}
+
+@keyframes polaris-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+
+@keyframes polaris-ring {
+  0% { transform: scale(0.85); opacity: 0.6; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.polaris-pulse { animation: polaris-pulse 2.8s ease-in-out infinite; }
+.polaris-ring { animation: polaris-ring 2.4s ease-out infinite; }

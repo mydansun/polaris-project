@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Polaris workspace</title>
+    <style>
+      /* POLARIS_INLINE_CSS */
+    </style>
+  </head>
+  <body class="flex min-h-screen flex-col items-center justify-center px-6 text-center">
+    <div class="relative mb-10 flex h-28 w-28 items-center justify-center">
+      <span class="polaris-ring absolute inset-0 rounded-full border border-polaris-accent/60"></span>
+      <span class="polaris-ring absolute inset-2 rounded-full border border-polaris-accent/40" style="animation-delay:0.6s"></span>
+      <svg
+        class="polaris-pulse relative h-20 w-20"
+        viewBox="0 0 64 64"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        style="color: var(--color-polaris-accent);"
+      >
+        <circle cx="32" cy="32" r="4" fill="currentColor" stroke="none" />
+        <ellipse cx="32" cy="32" rx="24" ry="10" />
+        <ellipse cx="32" cy="32" rx="24" ry="10" transform="rotate(60 32 32)" />
+        <ellipse cx="32" cy="32" rx="24" ry="10" transform="rotate(120 32 32)" />
+      </svg>
+    </div>
+
+    <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">
+      Your Polaris workspace is ready
+    </h1>
+    <p class="mt-4 max-w-xl text-base leading-relaxed text-polaris-muted sm:text-lg">
+      The browser agent will navigate here once your app is built and running.
+      Until then, you are looking at a clean preview canvas.
+    </p>
+
+    <div class="mt-10 grid w-full max-w-xl grid-cols-1 gap-3 text-left sm:grid-cols-2">
+      <div class="rounded-lg border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+        <div class="text-xs font-medium uppercase tracking-wider text-polaris-accent">Workbench</div>
+        <div class="mt-1 text-sm text-polaris-fg/90">Chat, editor, and browser are wired up.</div>
+      </div>
+      <div class="rounded-lg border border-white/10 bg-white/5 p-4 backdrop-blur-sm">
+        <div class="text-xs font-medium uppercase tracking-wider text-polaris-accent">Agents</div>
+        <div class="mt-1 text-sm text-polaris-fg/90">Describe what to build; the agents take it from here.</div>
+      </div>
+    </div>
+
+    <footer class="mt-12 text-xs text-polaris-muted/80">
+      Polaris — Multi-agent app builder
+    </footer>
+  </body>
+</html>
