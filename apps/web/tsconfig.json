@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@polaris/shared-types": ["../../packages/shared-types/src"],
+      "@polaris/ui": ["../../packages/ui/src"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}
