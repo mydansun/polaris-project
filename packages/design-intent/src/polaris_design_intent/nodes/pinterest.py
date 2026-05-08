@@ -62,6 +62,17 @@ _THUMBNAIL_MAX = 480
 _JPEG_QUALITY = 70
 _S3_KEY_TEMPLATE = "static/images/pinterest-thumbs/{ref_id}-{salt}.jpg"
 
+# Multimodal-input encoding budget.  Pinterest originals run 200-500 KB
+# raw → 270-680 KB once base64-inlined into a chat message.  Six refs
+# × ~50k tokens-as-text each blew past gpt-5.4-mini's 272k context
+# window in the wild (316k tokens, 400 / context_length_exceeded).
+# Downscale to 1024px on the long edge + JPEG q75 before base64;
+# typical re-encoded payload is 30-90 KB so even six images stay
+# well under the limit.  Vision quality at 1024 is more than enough
+# for the scorer's "match against three short Pinterest queries".
+_SCORER_MAX = 1024
+_SCORER_JPEG_QUALITY = 75
+
 
 def _enrich_query(q: str) -> str:
     """Append ``_QUERY_SUFFIX`` to ``q`` unless the string already
@@ -86,6 +97,23 @@ def _blur_thumbnail(raw: bytes) -> bytes:
     out = io.BytesIO()
     img.save(out, format="JPEG", quality=_JPEG_QUALITY, optimize=True)
     return out.getvalue()
+
+
+def _downscale_for_multimodal(raw: bytes) -> tuple[bytes, str]:
+    """Decode ``raw``, downscale to ``_SCORER_MAX`` on the long edge,
+    re-encode as JPEG.  Returns ``(jpeg_bytes, "image/jpeg")``.
+
+    Used before base64-encoding into ``ref.image_b64`` to cap the
+    payload size sent to the scorer (and the mood-board node, which
+    re-uses the same field).  Raises whatever PIL raises on bad
+    input — caller should swallow.
+    """
+    img = Image.open(io.BytesIO(raw))
+    img = img.convert("RGB")
+    img.thumbnail((_SCORER_MAX, _SCORER_MAX))
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=_SCORER_JPEG_QUALITY, optimize=True)
+    return out.getvalue(), "image/jpeg"
 
 
 async def _upload_blurred_thumbnail(
@@ -201,8 +229,23 @@ async def pinterest_search_node(
             except Exception:
                 logger.warning("Pinterest image download failed: %s", ref.max, exc_info=True)
                 continue
-            ref.mime_type = mime
-            ref.image_b64 = base64.b64encode(data).decode("ascii")
+            # Downscale before base64-inlining into ``image_b64`` so the
+            # scorer's six-image batched call doesn't blow past the
+            # model's context window.  Fall back to the original on
+            # decode failure — a too-big image is still better than no
+            # image.
+            try:
+                scaled_bytes, scaled_mime = _downscale_for_multimodal(data)
+                ref.image_b64 = base64.b64encode(scaled_bytes).decode("ascii")
+                ref.mime_type = scaled_mime
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "pinterest_search: downscale failed for ref %s, using raw",
+                    ref.id,
+                    exc_info=True,
+                )
+                ref.image_b64 = base64.b64encode(data).decode("ascii")
+                ref.mime_type = mime
             ref.blurred_url = await _upload_blurred_thumbnail(
                 raw_bytes=data, ref_id=ref.id, settings=settings
             )
