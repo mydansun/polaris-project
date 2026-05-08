@@ -172,9 +172,12 @@ services:
       - polaris-shared
     restart: "no"
     command:
+      # `$$VAR` escapes compose interpolation so the literal `$VAR`
+      # reaches the shell, which expands it from the container env
+      # populated above (`environment.POLARIS_HOST_REPO_ROOT`).
       - sh
       - -c
-      - cd ${POLARIS_HOST_REPO_ROOT}/apps/api && exec alembic upgrade head
+      - cd $$POLARIS_HOST_REPO_ROOT/apps/api && exec alembic upgrade head
 
   api:
     image: polaris/api:stage
