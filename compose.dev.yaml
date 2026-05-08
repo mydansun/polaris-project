@@ -142,6 +142,31 @@ services:
       retries: 3
       start_period: 5s
 
+  # One-shot schema migrator.  Runs `alembic upgrade head` against
+  # postgres and exits; api/worker gate on its successful completion so
+  # `up.py dev` is the single command needed to bring up a fresh checkout.
+  migrate:
+    image: polaris/api:dev
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POLARIS_DATABASE_URL: postgresql+asyncpg://root:123456@postgres:5432/polaris
+      POLARIS_HOST_REPO_ROOT: ${PWD}
+    env_file:
+      - path: .env.dev
+        required: false
+    volumes:
+      - "${PWD}:${PWD}"
+    working_dir: ${PWD}/apps/api
+    networks:
+      - polaris-shared
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+
   api:
     image: polaris/api:dev
     build:
@@ -153,6 +178,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       # Datastore URLs default to 127.0.0.1 in pydantic Settings — that
       # works for host-mode dev but not in-container.  Override to the

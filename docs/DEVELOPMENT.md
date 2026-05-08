@@ -95,11 +95,13 @@ seconds.
 
 ### Database migrations
 
-Migrations are not auto-run on api start.  After `./scripts/up.py dev`
-brings the stack up:
+`compose.dev.yaml` runs a one-shot `migrate` service before api/worker
+start, so `./scripts/up.py dev` brings the schema to head automatically.
+To force a manual run (e.g. after editing migrations without restarting
+the stack):
 
 ```bash
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+docker compose -f compose.dev.yaml run --rm migrate
 ```
 
 (Tip: `export COMPOSE_FILE=compose.dev.yaml` in your shell rc and drop
@@ -130,7 +132,7 @@ For ad-hoc compose ops:
 ```bash
 docker compose -f compose.dev.yaml logs api -f
 docker compose -f compose.dev.yaml logs worker -f
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+docker compose -f compose.dev.yaml run --rm migrate    # rerun alembic upgrade head
 docker compose -f compose.dev.yaml ps
 docker compose -f compose.dev.yaml restart web   # vite picks up vite.config.ts changes
 ```
@@ -222,7 +224,7 @@ recreates the containers from the existing volumes.
 ```bash
 docker compose -f compose.dev.yaml exec api \
     alembic revision --autogenerate -m "add foo"
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+docker compose -f compose.dev.yaml run --rm migrate
 ```
 
 Worker reads via the same `polaris/api:dev` image's `apps/api` editable

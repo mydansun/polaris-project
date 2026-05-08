@@ -88,10 +88,13 @@ Postmark + OpenAI 都留空时:
 
 ### 数据库迁移
 
-api 启动**不会**自动跑迁移。`./scripts/up.py dev` 把栈拉起来后:
+`compose.dev.yaml` 里有一个一次性的 `migrate` 服务,在 api/worker
+启动前跑 `alembic upgrade head`,所以 `./scripts/up.py dev` 会自动
+把 schema 推到最新。如果想在不重启栈的情况下手动跑一次(比如刚改完
+迁移文件):
 
 ```bash
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+docker compose -f compose.dev.yaml run --rm migrate
 ```
 
 (小贴士:在 shell rc 里 `export COMPOSE_FILE=compose.dev.yaml`,
@@ -121,7 +124,7 @@ ad-hoc compose 操作:
 ```bash
 docker compose -f compose.dev.yaml logs api -f
 docker compose -f compose.dev.yaml logs worker -f
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+docker compose -f compose.dev.yaml run --rm migrate    # 重新跑 alembic upgrade head
 docker compose -f compose.dev.yaml ps
 docker compose -f compose.dev.yaml restart web   # vite 重读 vite.config.ts
 ```
@@ -206,7 +209,7 @@ Postgres / Redis 卷、registry 数据。**镜像保留**;要一并删用 `--nuc
 ```bash
 docker compose -f compose.dev.yaml exec api \
     alembic revision --autogenerate -m "add foo"
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+docker compose -f compose.dev.yaml run --rm migrate
 ```
 
 Worker 通过同一个 `polaris/api:dev` 镜像的 `apps/api` editable 安装

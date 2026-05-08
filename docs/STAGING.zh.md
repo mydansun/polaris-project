@@ -171,8 +171,11 @@ codex login                                        # workspace 容器要 bind-mo
 ```bash
 ./scripts/up.py stage          # 首次启动会触发交互式向导,起 stage 栈
 ./scripts/build.py             # 构建 polaris/{ide,workspace,chromium-vnc}:latest
-docker compose -f compose.stage.yaml exec api alembic upgrade head
 ```
+
+`compose.stage.yaml` 里有一个一次性的 `migrate` 服务,在 postgres
+healthy 后跑 `alembic upgrade head`,api/worker `depends_on` 它成功
+退出 —— 部署不再需要单独执行迁移命令。
 
 CI / 自动化场景用 `./scripts/up.py stage --non-interactive` —— 任何
 必填项缺失立刻报错,绝不弹问。
@@ -192,8 +195,7 @@ curl https://example.com/api/ready    # {database: "ok", redis: "ok"}
 cd ~/polaris-2
 git pull
 ./scripts/build.py             # 只重建过期的 workspace 镜像
-./scripts/up.py stage          # 重建并重启 api/worker/web 容器
-docker compose -f compose.stage.yaml exec api alembic upgrade head
+./scripts/up.py stage          # 重建并重启 api/worker/web;migrate 自动先跑
 ```
 
 `./scripts/up.py stage` 走 `docker compose up -d --build`,只重建

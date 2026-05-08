@@ -182,8 +182,11 @@ codex login                                        # workspace containers bind-m
 ```bash
 ./scripts/up.py stage          # interactive wizard the first time; rebuilds the stage stack
 ./scripts/build.py             # build polaris/{ide,workspace,chromium-vnc}:latest workspace images
-docker compose -f compose.stage.yaml exec api alembic upgrade head
 ```
+
+The `migrate` service in `compose.stage.yaml` runs `alembic upgrade head`
+once postgres is healthy, and api/worker gate on its successful exit —
+no manual migration step needed.
 
 `./scripts/up.py stage --non-interactive` is the CI / scripted path —
 fails fast on any missing required env, never prompts.
@@ -203,8 +206,7 @@ curl https://example.com/api/ready    # {database: "ok", redis: "ok"}
 cd ~/polaris-2
 git pull
 ./scripts/build.py             # rebuild only stale workspace images
-./scripts/up.py stage          # rebuild + restart api/worker/web containers
-docker compose -f compose.stage.yaml exec api alembic upgrade head
+./scripts/up.py stage          # rebuild + restart api/worker/web; migrate runs first
 ```
 
 `./scripts/up.py stage` re-runs `docker compose up -d --build`, which

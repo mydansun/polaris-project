@@ -147,6 +147,31 @@ services:
       retries: 3
       start_period: 5s
 
+  # One-shot schema migrator.  Runs `alembic upgrade head` against
+  # postgres and exits; api/worker gate on its successful completion so
+  # `up.py stage` is the single command needed to deploy a new release.
+  migrate:
+    image: polaris/api:stage
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POLARIS_DATABASE_URL: postgresql+asyncpg://root:123456@postgres:5432/polaris
+      POLARIS_HOST_REPO_ROOT: ${PWD}
+    env_file:
+      - path: .env.stage
+        required: false
+    volumes:
+      - "${PWD}:${PWD}"
+    working_dir: ${PWD}/apps/api
+    networks:
+      - polaris-shared
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+
   api:
     image: polaris/api:stage
     build:
@@ -158,6 +183,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       POLARIS_DATABASE_URL: postgresql+asyncpg://root:123456@postgres:5432/polaris
       POLARIS_REDIS_URL: redis://redis:6379/0
