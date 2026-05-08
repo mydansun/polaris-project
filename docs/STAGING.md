@@ -7,14 +7,16 @@ up without chowns.
 Scope of this doc:
 
 1. Rebinding the platform to a domain other than the default
-   `polaris-dev.xyz` — every `.env` knob involved.
+   `polaris-dev.xyz` — every `.env.stage` knob involved.
 2. Operational notes specific to a shared / staging host (hardening,
    backup, failure signatures).
 
-The actual stack-up flow is identical to local dev — `./scripts/up.py`
-brings up `compose.dev.yaml` and Traefik handles DNS-01 ACME for
-your domain.  See [DEVELOPMENT.md](./DEVELOPMENT.md) for the
-day-to-day commands.
+`./scripts/up.py stage` brings up the stage stack from
+`compose.stage.yaml` (nginx-served web bundle, no `--reload` on api,
+project name `polaris-stage`).  Traefik handles DNS-01 ACME for your
+domain identically to dev.  Day-to-day command shape mirrors
+[DEVELOPMENT.md](./DEVELOPMENT.md) — just append `stage` to every
+`up.py` / `down.py` invocation.
 
 ---
 
@@ -65,7 +67,7 @@ staging host's public IP (or a LAN IP for a closed setup):
 | `prod.example.com` + `*.prod.example.com` | Published user projects (`<uuid>.prod.example.com`) |
 | `s3.example.com` + `*.s3.example.com` | MinIO endpoints (path-style + virtual-host bucket addressing) |
 
-### 1.1 `.env` — every field that mentions the domain
+### 1.1 `.env.stage` — every field that mentions the domain
 
 ```bash
 # Platform domain (used by every Traefik label via ${POLARIS_DOMAIN}
@@ -101,15 +103,15 @@ VITE_API_BASE_URL=/api
 Traefik issues every cert via Cloudflare DNS-01 — no `certbot` runs on
 the host, no `/etc/letsencrypt/` to mount.  Provision an API token
 scoped to **DNS:Edit** on the parent zone (and `prod.` + `s3.` if
-they're separate zones), and put it in `.env`:
+they're separate zones), and put it in `.env.stage`:
 
 ```bash
 CF_API_TOKEN=<cloudflare DNS-edit token>
 ACME_EMAIL=admin@example.com
 ```
 
-`./scripts/up.py` validates the token live before bringing the stack
-up.  First issue takes ~30–60s per cert; renewals run automatically.
+`./scripts/up.py stage` validates the token live before bringing the
+stack up.  First issue takes ~30–60s per cert; renewals run automatically.
 
 ### 1.3 Other secrets
 
@@ -168,8 +170,8 @@ As that user, clone + configure the repo:
 cd ~
 git clone <repo> polaris-2
 cd polaris-2
-cp .env.example .env                               # fill in per §1
-chmod 600 .env                                     # secrets live here
+cp .env.example .env.stage                         # fill in per §1
+chmod 600 .env.stage                               # secrets live here
 codex login                                        # workspace containers bind-mount ~/.codex/auth.json
 ```
 
@@ -177,16 +179,14 @@ codex login                                        # workspace containers bind-m
 
 ## 3. Bring it up
 
-Same flow as dev:
-
 ```bash
-./scripts/up.py                # interactive wizard the first time; rebuilds compose stack
+./scripts/up.py stage          # interactive wizard the first time; rebuilds the stage stack
 ./scripts/build.py             # build polaris/{ide,workspace,chromium-vnc}:latest workspace images
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+docker compose -f compose.stage.yaml exec api alembic upgrade head
 ```
 
-`./scripts/up.py --non-interactive` is the CI / scripted path — fails
-fast on any missing required env, never prompts.
+`./scripts/up.py stage --non-interactive` is the CI / scripted path —
+fails fast on any missing required env, never prompts.
 
 Health checks once Traefik has issued its certs:
 
@@ -203,18 +203,23 @@ curl https://example.com/api/ready    # {database: "ok", redis: "ok"}
 cd ~/polaris-2
 git pull
 ./scripts/build.py             # rebuild only stale workspace images
-./scripts/up.py                # rebuild + restart api/worker/web containers
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+./scripts/up.py stage          # rebuild + restart api/worker/web containers
+docker compose -f compose.stage.yaml exec api alembic upgrade head
 ```
 
-`./scripts/up.py` re-runs `docker compose up -d --build`, which
+`./scripts/up.py stage` re-runs `docker compose up -d --build`, which
 recreates only services whose image or config changed.  Bind-mounted
 source under `apps/*` and `packages/*` is picked up live without an
-image rebuild — uvicorn `--reload` and Vite HMR watch the mount.
+image rebuild for api / worker — but stage's api CMD has `--reload`
+removed, so code edits need an explicit `docker compose -f
+compose.stage.yaml restart api`.  The web bundle is fully baked into
+`polaris/web:stage`, so frontend edits require a `docker compose -f
+compose.stage.yaml build web` + `up -d`.
+
 Workspace runtime image rebuilds don't affect already-running user
-containers; they keep the old image until the next session.  To
-flush every running session: `./scripts/down.py --clear` before
-`./scripts/up.py`.
+containers; they keep the old image until the next session.  To flush
+every running session: `./scripts/down.py stage --clear` before
+`./scripts/up.py stage`.
 
 ---
 
@@ -226,29 +231,25 @@ environment allows).  A staging host is a single point of failure.
 ### Postgres
 
 ```bash
-docker compose -f compose.dev.yaml exec -T postgres \
+docker compose -f compose.stage.yaml exec -T postgres \
   pg_dump -U root -d polaris > ~/backups/polaris-$(date +%F).sql
 # restore:
-docker compose -f compose.dev.yaml exec -T postgres psql -U root -d polaris \
+docker compose -f compose.stage.yaml exec -T postgres psql -U root -d polaris \
   < ~/backups/polaris-<date>.sql
 ```
 
 ### MinIO
 
-MinIO data lives in the named volume `minio-data` (or wherever your
-compose declares it).  Snapshot via a throwaway container so the
+MinIO data lives in a bind-mount at `infra/minio/data/` (owned by the
+MinIO container's UID).  Snapshot via a throwaway container so the
 running MinIO doesn't have to stop:
 
 ```bash
 docker run --rm \
-  -v polaris_minio-data:/data:ro \
+  -v $HOME/polaris-2/infra/minio/data:/data:ro \
   -v $HOME/backups:/out \
   alpine tar -czf /out/minio-$(date +%F).tgz -C /data .
 ```
-
-(Adjust the volume name to whatever `docker volume ls` reports for
-the MinIO data volume on your host — compose project name + volume
-name.)
 
 ### Published project state
 
@@ -273,8 +274,8 @@ new sessions work.
 ```bash
 mkdir -p ~/backups
 (crontab -l 2>/dev/null; cat <<'EOF'
-0 3 * * * docker compose -f $HOME/polaris-2/compose.dev.yaml exec -T postgres pg_dump -U root -d polaris > ~/backups/polaris-$(date +\%F).sql
-10 3 * * * docker run --rm -v polaris_minio-data:/data:ro -v $HOME/backups:/out alpine tar -czf /out/minio-$(date +\%F).tgz -C /data .
+0 3 * * * docker compose -f $HOME/polaris-2/compose.stage.yaml exec -T postgres pg_dump -U root -d polaris > ~/backups/polaris-$(date +\%F).sql
+10 3 * * * docker run --rm -v $HOME/polaris-2/infra/minio/data:/data:ro -v $HOME/backups:/out alpine tar -czf /out/minio-$(date +\%F).tgz -C /data .
 30 3 * * * find ~/backups -mtime +14 -delete
 EOF
 ) | crontab -
@@ -291,9 +292,9 @@ the deploy user is in the `docker` group.)
 
 | Source | Location |
 |---|---|
-| api | `docker compose -f compose.dev.yaml logs api -f` |
-| worker | `docker compose -f compose.dev.yaml logs worker -f` |
-| web | `docker compose -f compose.dev.yaml logs web -f` |
+| api | `docker compose -f compose.stage.yaml logs api -f` |
+| worker | `docker compose -f compose.stage.yaml logs worker -f` |
+| web | `docker compose -f compose.stage.yaml logs web -f` |
 | Per-workspace container | `docker logs polaris-ws-<hash>` / `polaris-br-<hash>` |
 | Per-published container | `docker logs polaris-pub-<projid>-web-1` |
 | Publish pipeline | DB `deployments.build_log` / `smoke_log`; streamed via SSE to `GET /deployments/{id}/events` and to `polaris publish` stdout inside the workspace |
@@ -303,18 +304,18 @@ the deploy user is in the `docker` group.)
 
 | Symptom | Likely cause | Where to look |
 |---|---|---|
-| api / worker container restart-looping | Bad `.env` / missing secret | `docker compose -f compose.dev.yaml logs api` (captures startup traceback) |
-| Traefik 404 on platform root | Compose label rule didn't pick up `${POLARIS_DOMAIN}` change | `./scripts/down.py && ./scripts/up.py` after `.env` edits — labels are baked at create time |
+| api / worker container restart-looping | Bad `.env.stage` / missing secret | `docker compose -f compose.stage.yaml logs api` (captures startup traceback) |
+| Traefik 404 on platform root | Compose label rule didn't pick up `${POLARIS_DOMAIN}` change | `./scripts/down.py stage && ./scripts/up.py stage` after `.env.stage` edits — labels are baked at create time |
 | Traefik 404 on `ide-*.example.com` | Workspace container died or never joined `polaris-shared` | `docker logs polaris-ws-<hash>` |
-| Session stuck in `queued` | Worker crashed | `docker compose -f compose.dev.yaml ps worker` + tail logs |
+| Session stuck in `queued` | Worker crashed | `docker compose -f compose.stage.yaml ps worker` + tail logs |
 | Publish `smoke probe never succeeded` | User container crash during startup; real cause is in the web container logs (auto-captured into `smoke_log`) | PublishPanel live log → "captured tail of `<svc>` container logs" section |
-| Users pile at "queued" | `POLARIS_MAX_GLOBAL_RUNS` hit | Bump in `.env`, then `./scripts/up.py` to recreate api / worker |
+| Users pile at "queued" | `POLARIS_MAX_GLOBAL_RUNS` hit | Bump in `.env.stage`, then `./scripts/up.py stage` to recreate api / worker |
 
 ### 6.3 Clean slate
 
 ```bash
-./scripts/down.py --clear         # drop platform pg/redis + workspace state (interactive)
-./scripts/down.py --clear --force # non-interactive
+./scripts/down.py stage --clear         # drop platform pg/redis + workspace state (interactive)
+./scripts/down.py stage --clear --force # non-interactive
 ```
 
 `--clear` keeps built images and the local docker registry.  For a
@@ -322,17 +323,17 @@ full wipe (every Polaris container + every volume + every bind-mount
 data dir, keeping only `~/.codex/auth.json`):
 
 ```bash
-./scripts/down.py --nuclear
+./scripts/down.py stage --nuclear
 ```
 
 ### 6.4 Stopping without losing state
 
 ```bash
-./scripts/down.py
+./scripts/down.py stage
 ```
 
 Removes containers, keeps every named volume + the `.data/` tree.
-The next `./scripts/up.py` recreates from existing volumes in seconds.
+The next `./scripts/up.py stage` recreates from existing volumes in seconds.
 
 ---
 
@@ -370,9 +371,9 @@ Before pointing real users at the staging host:
   Cloud provider security groups should mirror the same policy at the
   infrastructure layer (belt + suspenders).
 
-- `chmod 600 ~/polaris-2/.env`.  It carries every credential.  Also
-  `chmod 700 ~` on the deploy user's home so other local users can't
-  read across.
+- `chmod 600 ~/polaris-2/.env.stage`.  It carries every credential.
+  Also `chmod 700 ~` on the deploy user's home so other local users
+  can't read across.
 
 - Rotate `POLARIS_INVITE_CODE` any time you think it leaked.  Empty
   value blocks all new sign-ups as a kill switch.

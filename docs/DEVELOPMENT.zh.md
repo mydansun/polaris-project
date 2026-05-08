@@ -16,8 +16,8 @@
 | 一个绑在 Cloudflare DNS 的真实域名 | TLS 走 ACME DNS-01,Traefik 自动签 | — |
 
 不需要系统 Python venv,不需要系统 pnpm,**不需要 Make**。
-`./scripts/up.py` 自己会预检 Docker 和 `.env`,首次发现必填项缺失时
-直接拉起向导。
+`./scripts/up.py dev` 自己会预检 Docker 和 `.env.dev`,首次发现必填项
+缺失时直接拉起向导。
 
 **`compose.dev.yaml` 占用的宿主端口:**
 
@@ -38,16 +38,19 @@ api / worker / web / dev-vnc / minio **不绑**宿主端口 —— 它们挂在
 
 ```bash
 git clone <repo> && cd polaris-2
-cp .env.example .env       # 模板 —— `up.py` 会带你补完
-./scripts/up.py            # 首次启动会触发交互式向导
+cp .env.example .env.dev   # 模板 —— `up.py` 会带你补完
+./scripts/up.py dev        # 首次启动会触发交互式向导
 ```
+
+(省略 `dev` 位置参数会触发交互式选择。stage 模式同样的形状:
+`cp .env.example .env.stage` + `./scripts/up.py stage`。)
 
 向导会逐字段提示输入,在线校验 token(Cloudflare DNS-01、OpenAI、
 Pinterest),`SESSION_SECRET` 缺失时自动生成,然后跑
 `docker compose -f compose.dev.yaml up -d --build`。字段元数据集中在
 `scripts/lib/spec.py`,这是向导、README、CI 非交互模式的唯一事实源。
 
-本地开发的最小 `.env`:
+本地开发的最小 `.env.dev`:
 
 ```
 POLARIS_DOMAIN=polaris-dev.xyz             # 任意属于你的、托在 CF DNS 上的域名
@@ -70,8 +73,8 @@ Postmark + OpenAI 都留空时:
 
 ### 构建 workspace 运行时镜像
 
-`./scripts/up.py` 拉起平台栈本身,但每会话 workspace 容器**用的运行
-时镜像**要由 `./scripts/build.py` 来打:
+`./scripts/up.py dev` 拉起平台栈本身,但每会话 workspace 容器**用的
+运行时镜像**要由 `./scripts/build.py` 来打:
 
 ```bash
 ./scripts/build.py                # 构建 polaris/{ide,workspace,chromium-vnc}:latest
@@ -85,7 +88,7 @@ Postmark + OpenAI 都留空时:
 
 ### 数据库迁移
 
-api 启动**不会**自动跑迁移。`./scripts/up.py` 把栈拉起来后:
+api 启动**不会**自动跑迁移。`./scripts/up.py dev` 把栈拉起来后:
 
 ```bash
 docker compose -f compose.dev.yaml exec api alembic upgrade head
@@ -98,16 +101,20 @@ docker compose -f compose.dev.yaml exec api alembic upgrade head
 
 ## 3. 日常命令
 
+所有 `up.py` / `down.py` 命令都接收一个可选的 `dev | stage` 位置参数,
+省略时会交互选择(`--non-interactive` 下默认 `dev`)。本页假设 `dev`,
+stage 模式见 [STAGING.zh.md](./STAGING.zh.md)。
+
 | 命令 | 用途 |
 |---|---|
-| `./scripts/up.py` | 配置(必要时)+ 启动平台栈。改了 `.env` 之后再跑一次。 |
-| `./scripts/up.py --reconfigure` | `.env` 完整也强制走向导。 |
-| `./scripts/up.py --non-interactive` | CI 模式 —— 任何必填项缺失立刻报错。 |
-| `./scripts/up.py --skip-build` | Dockerfile 变了也别自动 `build.py`。 |
-| `./scripts/down.py` | `docker compose down`。所有卷 + `.data/` 保留。 |
-| `./scripts/down.py --clear` | `down -v` + 清掉 `.data/{workspaces,workspace-meta,projects}`。 |
-| `./scripts/down.py --nuclear` | `--clear` + 删平台镜像 + 删 `.data/certs`。 |
-| `./scripts/build.py [--only X] [--force] [--push REGISTRY]` | 构建 / 推送 workspace 运行时镜像。 |
+| `./scripts/up.py dev` | 配置(必要时)+ 启动平台栈。改了 `.env.dev` 之后再跑一次。 |
+| `./scripts/up.py dev --reconfigure` | `.env.dev` 完整也强制走向导。 |
+| `./scripts/up.py dev --non-interactive` | CI 模式 —— 任何必填项缺失立刻报错。 |
+| `./scripts/up.py dev --skip-build` | Dockerfile 变了也别自动 `build.py`。 |
+| `./scripts/down.py dev` | `docker compose down`。所有卷 + `.data/` 保留。 |
+| `./scripts/down.py dev --clear` | `down -v` + 清掉 `.data/{workspaces,workspace-meta,projects}`。 |
+| `./scripts/down.py dev --nuclear` | `--clear` + 删平台镜像(`polaris/{api,worker,web}:dev` + workspace runtime 三件套)。 |
+| `./scripts/build.py [--only X] [--force] [--push REGISTRY]` | 构建 / 推送 workspace 运行时镜像(dev / stage 共用)。 |
 
 ad-hoc compose 操作:
 
@@ -132,7 +139,7 @@ Polaris 不带自签 / `localhost` 模式。Traefik 走 Cloudflare 的
 DNS-01 ACME,所以:
 
 1. 选一个属于你、托在 Cloudflare DNS 上的域名。
-2. 在 `.env` 里写 `POLARIS_DOMAIN`。
+2. 在 `.env.dev` 里写 `POLARIS_DOMAIN`。
 3. 向导会校验 `CF_API_TOKEN`(DNS-write 权限),栈拉起后 Traefik
    自己签发并自动续期通配证书。
 4. 打开 `https://${POLARIS_DOMAIN}/`(平台根)、
@@ -172,8 +179,8 @@ docker compose -f compose.dev.yaml run --rm web pnpm --filter @polaris/web build
 ### 6.1 全部重置
 
 ```bash
-./scripts/down.py --clear         # 交互式,丢掉所有 workspace 状态 + 平台 pg/redis
-./scripts/down.py --clear --force # 非交互
+./scripts/down.py dev --clear         # 交互式,丢掉所有 workspace 状态 + 平台 pg/redis
+./scripts/down.py dev --clear --force # 非交互
 ```
 
 清掉 per-workspace 容器、per-project compose 状态、workspace meta、
@@ -182,10 +189,10 @@ Postgres / Redis 卷、registry 数据。**镜像保留**;要一并删用 `--nuc
 ### 6.2 保留状态停机
 
 ```bash
-./scripts/down.py                 # docker compose down,卷 + .data/* 都保留
+./scripts/down.py dev             # docker compose down,卷 + .data/* 都保留
 ```
 
-容器拆掉,但所有命名卷 + `.data/` 完整保留。下次 `./scripts/up.py`
+容器拆掉,但所有命名卷 + `.data/` 完整保留。下次 `./scripts/up.py dev`
 直接基于现有卷重建容器。
 
 ### 6.3 新迁移
@@ -205,7 +212,7 @@ re-register 到 bind-mount 路径),不用二次装。
 ```bash
 ./scripts/build.py --only workspace
 # 已经在跑的 workspace 容器用旧镜像,新会话才会拿到新镜像。
-# `./scripts/down.py --clear` 清掉容器,新会话自然用新镜像。
+# `./scripts/down.py dev --clear` 清掉容器,新会话自然用新镜像。
 ```
 
 `./scripts/build.py --only workspace` 在以下文件变化时重建:
@@ -246,13 +253,13 @@ psql "postgresql://root:123456@127.0.0.1:$(docker compose -f compose.dev.yaml po
 
 | 症状 | 常见原因 | 处理 |
 |---|---|---|
-| `./scripts/up.py` 报 Docker 出错 | 守护进程没启 / 当前用户不在 `docker` 组 | 启动 Docker;`sudo usermod -aG docker $USER && exec newgrp docker` |
+| `./scripts/up.py dev` 报 Docker 出错 | 守护进程没启 / 当前用户不在 `docker` 组 | 启动 Docker;`sudo usermod -aG docker $USER && exec newgrp docker` |
 | Traefik 对根域 / vnc 502 | api / web 容器还在启(uvicorn `--reload`、Vite 冷启) | 等约 10 秒;`docker compose -f compose.dev.yaml logs <svc>` |
 | 首次启动 TLS 证书错 | Cloudflare DNS-01 还没完成 | 看 `docker logs polaris-traefik-1`,首次签发约 30–60 秒 |
 | `polaris/ide` 构建卡 5 分钟 | 首次 yarn workspaces + Theia compile | 正常,后续走缓存 |
 | Session 一直 `queued` | Worker 没跑或崩了 | `docker compose -f compose.dev.yaml logs worker -f`;`docker compose -f compose.dev.yaml restart worker` |
 | IDE iframe 一直 "等待代理" | Codex 没调 `set_project_root` | `docker logs polaris-ws-<hash>` 看 Codex transcript,通常是 scaffold 崩了 |
-| Workspace 容器报 auth 错 | 宿主 `~/.codex/auth.json` 缺失 | 宿主跑一次 `codex login`,再 `./scripts/down.py --clear && ./scripts/up.py` |
+| Workspace 容器报 auth 错 | 宿主 `~/.codex/auth.json` 缺失 | 宿主跑一次 `codex login`,再 `./scripts/down.py dev --clear && ./scripts/up.py dev` |
 
 ---
 

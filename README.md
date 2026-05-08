@@ -13,12 +13,19 @@ Subsequent messages run Codex directly with plan / build modes.
 ## Quick Start
 
 ```sh
-./scripts/up.py            # interactive wizard on first run; starts the stack
+./scripts/up.py            # prompts dev | stage, runs wizard on first run
+./scripts/up.py dev        # explicit dev (Vite HMR + uvicorn --reload)
+./scripts/up.py stage      # explicit stage (nginx-served bundle, no --reload)
 ```
 
 Open `https://${POLARIS_DOMAIN}` (default suggestion: `polaris-dev.xyz`).
 First-time sign-in requires an invite code (set via the wizard); on dev
 hosts you can click **Dev Login** to skip email verification.
+
+Each mode owns its own `.env.<mode>` and `compose.<mode>.yaml` and runs
+under its own compose project name (`polaris` vs `polaris-stage`), with
+independent named volumes — the two stacks coexist on one host without
+clobbering each other's state.
 
 ## Host Prerequisites
 
@@ -35,26 +42,33 @@ Vite HMR pick changes up live without rebuilding images.
 
 ## Daily Commands
 
+All commands take an optional `dev | stage` positional; if omitted, the
+script prompts (or defaults to `dev` under `--non-interactive`).
+
 | Command | What it does |
 |---------|--------------|
-| `./scripts/up.py` | Configure (if needed) + start the stack. Re-run after editing `.env` |
-| `./scripts/up.py --reconfigure` | Re-run the wizard even if `.env` is complete |
-| `./scripts/up.py --non-interactive` | CI mode — fail fast on any missing required env |
-| `./scripts/down.py` | Stop the stack + sweep dynamic workspace containers (preserves data) |
-| `./scripts/down.py --clear` | Drop platform volumes + wipe `.data/{workspaces,workspace-meta,projects}` |
-| `./scripts/down.py --nuclear` | `--clear` + remove built images + delete `.data/certs` |
-| `./scripts/build.py` | Build the workspace runtime images (idempotent — only rebuilds if Dockerfile changed) |
-| `./scripts/build.py --force` | Rebuild every image regardless of mtime |
-| `./scripts/build.py --push REGISTRY` | Tag + push to a remote registry after build |
+| `./scripts/up.py [dev\|stage]` | Configure (if needed) + start the stack.  Re-run after editing `.env.<mode>`. |
+| `./scripts/up.py <mode> --reconfigure` | Re-run the wizard even if `.env.<mode>` is complete. |
+| `./scripts/up.py <mode> --non-interactive` | CI mode — fail fast on any missing required env. |
+| `./scripts/down.py [dev\|stage]` | Stop the stack + sweep dynamic workspace containers (preserves data). |
+| `./scripts/down.py <mode> --clear` | Drop platform volumes + wipe `.data/{workspaces,workspace-meta,projects}`. |
+| `./scripts/down.py <mode> --nuclear` | `--clear` + remove built images (api/worker/web for that mode + workspace/ide/chromium-vnc). |
+| `./scripts/build.py` | Build the workspace runtime images (idempotent — only rebuilds if Dockerfile changed).  Shared between dev and stage. |
+| `./scripts/build.py --force` | Rebuild every image regardless of mtime. |
+| `./scripts/build.py --push REGISTRY` | Tag + push to a remote registry after build. |
 
 For ad-hoc compose ops (`logs`, `exec`, `ps`):
 
 ```sh
 docker compose -f compose.dev.yaml logs api -f
 docker compose -f compose.dev.yaml exec api alembic upgrade head
+
+# stage variant — same shape, just swap the file:
+docker compose -f compose.stage.yaml logs api -f
 ```
 
-Tip: `export COMPOSE_FILE=compose.dev.yaml` in your shell rc to drop the `-f`.
+Tip: `export COMPOSE_FILE=compose.dev.yaml` (or `compose.stage.yaml`) in
+your shell rc to drop the `-f`.
 
 ### Headless server? Use the dev VNC
 
@@ -106,22 +120,24 @@ specifically so VSCode / Cursor TypeScript IntelliSense remains useful.
 
 ## Configuration
 
-Settings live in `.env` at the repo root.  The first `./scripts/up.py`
-run launches a wizard that walks you through every required field with
-live token validation.  Re-run with `--reconfigure` to change the
-domain, swap TLS modes, rotate keys, etc — all without touching code.
+Settings live in `.env.dev` and `.env.stage` at the repo root, one per
+mode.  The first `./scripts/up.py <mode>` run launches a wizard that
+walks you through every required field with live token validation.
+Re-run with `--reconfigure` to change the domain, swap TLS modes,
+rotate keys, etc — all without touching code.
 
 Field metadata (defaults / required / secret / validators) lives in
 `scripts/lib/spec.py` — a single source of truth for the wizard, the
 README, and CI's non-interactive checks.
 
-`.env` is gitignored.  Moving the repo elsewhere on the same host:
+Both `.env.<mode>` files are gitignored.  Moving the repo elsewhere on
+the same host:
 
 ```sh
-./scripts/down.py
+./scripts/down.py dev
 mv polaris-project ~/work/polaris
 cd ~/work/polaris
-./scripts/up.py        # works — every host bind-mount is `./` relative
+./scripts/up.py dev    # works — every host bind-mount is `./` relative
 ```
 
 ## Repository Shape

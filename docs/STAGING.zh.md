@@ -7,12 +7,14 @@ chown 对齐。
 本文只覆盖这两个维度:
 
 1. 把平台从默认的 `polaris-dev.xyz` 改绑到你自己的域名 —— 涉及的
-   `.env` 字段。
+   `.env.stage` 字段。
 2. staging 主机特有的运维注意(加固、备份、故障特征)。
 
-实际把栈拉起来的命令和本地开发完全一样 —— `./scripts/up.py` 启动
-`compose.dev.yaml`,Traefik 自己跑 DNS-01 ACME 签证书。日常命令
-见 [DEVELOPMENT.zh.md](./DEVELOPMENT.zh.md)。
+`./scripts/up.py stage` 启动 `compose.stage.yaml`(nginx 静态前端、
+api 关掉 `--reload`、compose project 名 `polaris-stage`),Traefik 自
+己跑 DNS-01 ACME 签证书。日常命令形状跟
+[DEVELOPMENT.zh.md](./DEVELOPMENT.zh.md) 一样,只是每次 `up.py` /
+`down.py` 后面带上 `stage` 而已。
 
 ---
 
@@ -58,7 +60,7 @@ chown 对齐。
 | `prod.example.com` + `*.prod.example.com` | 已发布的用户项目(`<uuid>.prod.example.com`) |
 | `s3.example.com` + `*.s3.example.com` | MinIO(path-style + virtual-host bucket 寻址) |
 
-### 1.1 `.env` —— 所有跟域名相关的字段
+### 1.1 `.env.stage` —— 所有跟域名相关的字段
 
 ```bash
 # 平台域名(compose.dev.yaml 里所有 Traefik 标签靠 ${POLARIS_DOMAIN}
@@ -92,15 +94,15 @@ VITE_API_BASE_URL=/api
 Traefik 通过 Cloudflare DNS-01 自动签所有证书 —— **宿主机不跑
 `certbot`**,**没有 `/etc/letsencrypt/` 要挂载**。准一个权限范围是
 父 zone(以及 `prod.` / `s3.` 在不同 zone 的话也加上)
-**DNS:Edit** 的 API token,放进 `.env`:
+**DNS:Edit** 的 API token,放进 `.env.stage`:
 
 ```bash
 CF_API_TOKEN=<cloudflare DNS-edit token>
 ACME_EMAIL=admin@example.com
 ```
 
-`./scripts/up.py` 在拉起栈之前会在线校验 token。首次签发每张证书
-约 30–60 秒,续期自动跑。
+`./scripts/up.py stage` 在拉起栈之前会在线校验 token。首次签发每张
+证书约 30–60 秒,续期自动跑。
 
 ### 1.3 其它 secrets
 
@@ -157,8 +159,8 @@ groups | grep -qw docker && echo "docker group OK"
 cd ~
 git clone <repo> polaris-2
 cd polaris-2
-cp .env.example .env                               # 按 §1 填
-chmod 600 .env                                     # secret 都在里面
+cp .env.example .env.stage                         # 按 §1 填
+chmod 600 .env.stage                               # secret 都在里面
 codex login                                        # workspace 容器要 bind-mount ~/.codex/auth.json
 ```
 
@@ -166,16 +168,14 @@ codex login                                        # workspace 容器要 bind-mo
 
 ## 3. 拉起栈
 
-跟本地开发完全一样:
-
 ```bash
-./scripts/up.py                # 首次启动会触发交互式向导
+./scripts/up.py stage          # 首次启动会触发交互式向导,起 stage 栈
 ./scripts/build.py             # 构建 polaris/{ide,workspace,chromium-vnc}:latest
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+docker compose -f compose.stage.yaml exec api alembic upgrade head
 ```
 
-CI / 自动化场景用 `./scripts/up.py --non-interactive` —— 任何必填项
-缺失立刻报错,绝不弹问。
+CI / 自动化场景用 `./scripts/up.py stage --non-interactive` —— 任何
+必填项缺失立刻报错,绝不弹问。
 
 Traefik 把证书签出来之后做健康检查:
 
@@ -192,15 +192,19 @@ curl https://example.com/api/ready    # {database: "ok", redis: "ok"}
 cd ~/polaris-2
 git pull
 ./scripts/build.py             # 只重建过期的 workspace 镜像
-./scripts/up.py                # 重建并重启 api/worker/web 容器
-docker compose -f compose.dev.yaml exec api alembic upgrade head
+./scripts/up.py stage          # 重建并重启 api/worker/web 容器
+docker compose -f compose.stage.yaml exec api alembic upgrade head
 ```
 
-`./scripts/up.py` 走 `docker compose up -d --build`,只重建镜像或
-配置变了的服务。`apps/*`、`packages/*` 的源码 bind-mount 进容器,
-变更即时生效 —— uvicorn `--reload` 和 Vite HMR 会监听 mount。
+`./scripts/up.py stage` 走 `docker compose up -d --build`,只重建
+镜像或配置变了的服务。`apps/*`、`packages/*` 的源码对 api/worker
+仍是 bind-mount 进容器,但 stage 把 api 的 `--reload` 关掉了,所以
+代码改了要 `docker compose -f compose.stage.yaml restart api` 才生效。
+前端是烘焙进 `polaris/web:stage` 的,改了前端要
+`docker compose -f compose.stage.yaml build web && up -d`。
+
 Workspace 运行时镜像重建**不影响**正在跑的用户容器,它们用旧镜像跑
-到下次新会话为止。要全局刷新:重启服务前先 `./scripts/down.py --clear`。
+到下次新会话为止。要全局刷新:重启服务前先 `./scripts/down.py stage --clear`。
 
 ---
 
@@ -212,22 +216,21 @@ staging 单机仍然是单点故障。
 ### Postgres
 
 ```bash
-docker compose -f compose.dev.yaml exec -T postgres \
+docker compose -f compose.stage.yaml exec -T postgres \
   pg_dump -U root -d polaris > ~/backups/polaris-$(date +%F).sql
 # 恢复:
-docker compose -f compose.dev.yaml exec -T postgres psql -U root -d polaris \
+docker compose -f compose.stage.yaml exec -T postgres psql -U root -d polaris \
   < ~/backups/polaris-<date>.sql
 ```
 
 ### MinIO
 
-MinIO 数据存在命名卷 `minio-data`(具体名以 `docker volume ls`
-为准 —— compose project 名 + 卷名拼出来)。用一次性容器做快照,
-不用停 MinIO:
+MinIO 数据是 bind-mount 到 `infra/minio/data/`(归 MinIO 容器 UID
+所有)。用一次性容器做快照,不用停 MinIO:
 
 ```bash
 docker run --rm \
-  -v polaris_minio-data:/data:ro \
+  -v $HOME/polaris-2/infra/minio/data:/data:ro \
   -v $HOME/backups:/out \
   alpine tar -czf /out/minio-$(date +%F).tgz -C /data .
 ```
@@ -254,8 +257,8 @@ docker run --rm \
 ```bash
 mkdir -p ~/backups
 (crontab -l 2>/dev/null; cat <<'EOF'
-0 3 * * * docker compose -f $HOME/polaris-2/compose.dev.yaml exec -T postgres pg_dump -U root -d polaris > ~/backups/polaris-$(date +\%F).sql
-10 3 * * * docker run --rm -v polaris_minio-data:/data:ro -v $HOME/backups:/out alpine tar -czf /out/minio-$(date +\%F).tgz -C /data .
+0 3 * * * docker compose -f $HOME/polaris-2/compose.stage.yaml exec -T postgres pg_dump -U root -d polaris > ~/backups/polaris-$(date +\%F).sql
+10 3 * * * docker run --rm -v $HOME/polaris-2/infra/minio/data:/data:ro -v $HOME/backups:/out alpine tar -czf /out/minio-$(date +\%F).tgz -C /data .
 30 3 * * * find ~/backups -mtime +14 -delete
 EOF
 ) | crontab -
@@ -272,9 +275,9 @@ EOF
 
 | 来源 | 位置 |
 |---|---|
-| api | `docker compose -f compose.dev.yaml logs api -f` |
-| worker | `docker compose -f compose.dev.yaml logs worker -f` |
-| web | `docker compose -f compose.dev.yaml logs web -f` |
+| api | `docker compose -f compose.stage.yaml logs api -f` |
+| worker | `docker compose -f compose.stage.yaml logs worker -f` |
+| web | `docker compose -f compose.stage.yaml logs web -f` |
 | 每会话 workspace 容器 | `docker logs polaris-ws-<hash>` / `polaris-br-<hash>` |
 | 已发布容器 | `docker logs polaris-pub-<projid>-web-1` |
 | Publish pipeline | DB `deployments.build_log` / `smoke_log`;SSE 推到 `GET /deployments/{id}/events`;workspace 里 `polaris publish` 的 stdout |
@@ -284,34 +287,34 @@ EOF
 
 | 症状 | 原因 | 从哪查 |
 |---|---|---|
-| api / worker 容器反复重启 | `.env` 错 / secret 缺 | `docker compose -f compose.dev.yaml logs api`(能抓到启动 traceback) |
-| Traefik 对根域 404 | `${POLARIS_DOMAIN}` 改了但 compose 标签是创建时烘焙的 | `.env` 改完跑 `./scripts/down.py && ./scripts/up.py` 让标签重新生成 |
+| api / worker 容器反复重启 | `.env.stage` 错 / secret 缺 | `docker compose -f compose.stage.yaml logs api`(能抓到启动 traceback) |
+| Traefik 对根域 404 | `${POLARIS_DOMAIN}` 改了但 compose 标签是创建时烘焙的 | `.env.stage` 改完跑 `./scripts/down.py stage && ./scripts/up.py stage` 让标签重新生成 |
 | Traefik 对 `ide-*.example.com` 404 | Workspace 容器崩了或没加入 `polaris-shared` 网络 | `docker logs polaris-ws-<hash>` |
-| Session 一直 queued | Worker 崩了 | `docker compose -f compose.dev.yaml ps worker` + tail 日志 |
+| Session 一直 queued | Worker 崩了 | `docker compose -f compose.stage.yaml ps worker` + tail 日志 |
 | Publish 报 `smoke probe never succeeded` | 用户容器启动阶段崩;真正原因在 web 容器日志里(pipeline 自动追加到 `smoke_log`) | PublishPanel live log "captured tail of `<svc>` container logs" 区段 |
-| 用户一窝堆在 "queued" | `POLARIS_MAX_GLOBAL_RUNS` 上限 | 在 `.env` 调大,跑 `./scripts/up.py` 让 api / worker 重建 |
+| 用户一窝堆在 "queued" | `POLARIS_MAX_GLOBAL_RUNS` 上限 | 在 `.env.stage` 调大,跑 `./scripts/up.py stage` 让 api / worker 重建 |
 
 ### 6.3 清空
 
 ```bash
-./scripts/down.py --clear         # 交互式,丢所有 workspace 状态 + 平台 pg/redis
-./scripts/down.py --clear --force # 非交互
+./scripts/down.py stage --clear         # 交互式,丢所有 workspace 状态 + 平台 pg/redis
+./scripts/down.py stage --clear --force # 非交互
 ```
 
 `--clear` 保留构建的镜像和本地 registry。要一并清掉(所有 polaris
 容器 + 所有卷 + 所有 bind-mount 数据目录,只留 `~/.codex/auth.json`):
 
 ```bash
-./scripts/down.py --nuclear
+./scripts/down.py stage --nuclear
 ```
 
 ### 6.4 保留状态停机
 
 ```bash
-./scripts/down.py
+./scripts/down.py stage
 ```
 
-容器拆掉,所有命名卷和 `.data/` 完整保留。下次 `./scripts/up.py`
+容器拆掉,所有命名卷和 `.data/` 完整保留。下次 `./scripts/up.py stage`
 基于现有卷秒级重建。
 
 ---
@@ -348,7 +351,7 @@ EOF
 
   云厂商安全组同样在基础设施层镜像这条策略(双保险)。
 
-- `chmod 600 ~/polaris-2/.env` —— 所有凭据都在里面;再
+- `chmod 600 ~/polaris-2/.env.stage` —— 所有凭据都在里面;再
   `chmod 700 ~` 防其他本地用户跨读。
 
 - 轮换 `POLARIS_INVITE_CODE`,怀疑泄露就换,置空作为紧急关闸。

@@ -31,7 +31,7 @@ For an interactive run on the host:
 ## Quick Smoke (End-to-End)
 
 ```sh
-./scripts/down.py --clear && ./scripts/up.py
+./scripts/down.py dev --clear && ./scripts/up.py dev
 ```
 
 Visit `https://${POLARIS_DOMAIN}/` (default suggestion `polaris-dev.xyz`),

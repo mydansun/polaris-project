@@ -16,9 +16,9 @@ itself.  For a shared demo / staging instance, see
 | Codex CLI + `codex login` | Workspace containers bind-mount `~/.codex/auth.json` | latest |
 | A real domain on Cloudflare DNS | TLS via ACME DNS-01 (Traefik handles certs) | — |
 
-No system Python venv, no system pnpm, no Make.  `./scripts/up.py`
-preflights Docker + the `.env` and runs the wizard the first time it
-sees a missing required field.
+No system Python venv, no system pnpm, no Make.  `./scripts/up.py dev`
+preflights Docker + the `.env.dev` file and runs the wizard the first
+time it sees a missing required field.
 
 **Host ports bound by `compose.dev.yaml`:**
 
@@ -39,9 +39,13 @@ are reached through Traefik on `${POLARIS_DOMAIN}` (e.g.
 
 ```bash
 git clone <repo> && cd polaris-2
-cp .env.example .env       # template — `up.py` will fill the rest
-./scripts/up.py            # interactive wizard on first run
+cp .env.example .env.dev   # template — `up.py` will fill the rest
+./scripts/up.py dev        # interactive wizard on first run
 ```
+
+(Omitting the `dev` positional triggers an interactive prompt.  Stage
+mode follows the same pattern with `cp .env.example .env.stage` +
+`./scripts/up.py stage`.)
 
 The wizard prompts for every required field, validates live tokens
 (Cloudflare DNS-01, OpenAI, Pinterest), auto-generates `SESSION_SECRET`
@@ -49,7 +53,7 @@ when blank, then runs `docker compose -f compose.dev.yaml up -d
 --build`.  Field metadata lives in `scripts/lib/spec.py` — single
 source of truth for the wizard, README, and CI's non-interactive checks.
 
-Minimum-viable `.env` for local dev:
+Minimum-viable `.env.dev` for local dev:
 
 ```
 POLARIS_DOMAIN=polaris-dev.xyz             # any domain you control on CF DNS
@@ -73,9 +77,9 @@ When Postmark and OpenAI are both empty:
 
 ### Building the workspace runtime images
 
-`./scripts/up.py` brings up the dev stack itself, but the **workspace
-runtime images** that per-session containers spawn from need
-`./scripts/build.py`:
+`./scripts/up.py dev` brings up the dev stack itself, but the
+**workspace runtime images** that per-session containers spawn from
+need `./scripts/build.py`:
 
 ```bash
 ./scripts/build.py                # builds polaris/{ide,workspace,chromium-vnc}:latest
@@ -91,7 +95,7 @@ seconds.
 
 ### Database migrations
 
-Migrations are not auto-run on api start.  After `./scripts/up.py`
+Migrations are not auto-run on api start.  After `./scripts/up.py dev`
 brings the stack up:
 
 ```bash
@@ -105,16 +109,21 @@ the `-f` from every compose invocation.)
 
 ## 3. Daily commands
 
+All `up.py` / `down.py` commands take an optional `dev | stage`
+positional; if omitted, they prompt (or default to `dev` under
+`--non-interactive`).  This page assumes `dev`; for stage see
+[STAGING.md](./STAGING.md).
+
 | Command | What it does |
 |---|---|
-| `./scripts/up.py` | Configure (if needed) + start the stack.  Re-run after editing `.env`. |
-| `./scripts/up.py --reconfigure` | Re-run the wizard even if `.env` is complete. |
-| `./scripts/up.py --non-interactive` | CI mode — fail fast on any missing required env. |
-| `./scripts/up.py --skip-build` | Don't auto-trigger `build.py` even if Dockerfiles changed. |
-| `./scripts/down.py` | `docker compose down`.  Preserves all volumes + `.data/`. |
-| `./scripts/down.py --clear` | `down -v` + wipe `.data/{workspaces,workspace-meta,projects}`. |
-| `./scripts/down.py --nuclear` | `--clear` + remove built platform images + delete `.data/certs`. |
-| `./scripts/build.py [--only X] [--force] [--push REGISTRY]` | Build / push the per-workspace runtime images. |
+| `./scripts/up.py dev` | Configure (if needed) + start the stack.  Re-run after editing `.env.dev`. |
+| `./scripts/up.py dev --reconfigure` | Re-run the wizard even if `.env.dev` is complete. |
+| `./scripts/up.py dev --non-interactive` | CI mode — fail fast on any missing required env. |
+| `./scripts/up.py dev --skip-build` | Don't auto-trigger `build.py` even if Dockerfiles changed. |
+| `./scripts/down.py dev` | `docker compose down`.  Preserves all volumes + `.data/`. |
+| `./scripts/down.py dev --clear` | `down -v` + wipe `.data/{workspaces,workspace-meta,projects}`. |
+| `./scripts/down.py dev --nuclear` | `--clear` + remove built platform images (`polaris/{api,worker,web}:dev` + the workspace runtime trio). |
+| `./scripts/build.py [--only X] [--force] [--push REGISTRY]` | Build / push the per-workspace runtime images.  Shared between dev and stage. |
 
 For ad-hoc compose ops:
 
@@ -140,7 +149,7 @@ Polaris doesn't ship a self-signed / `localhost` mode.  Traefik does
 DNS-01 ACME against Cloudflare, so:
 
 1. Pick a domain you own that's on Cloudflare DNS.
-2. Set `POLARIS_DOMAIN` in `.env`.
+2. Set `POLARIS_DOMAIN` in `.env.dev`.
 3. The wizard validates your `CF_API_TOKEN` (DNS-write scope) before
    bringing the stack up; Traefik then issues + renews wildcards
    automatically.
@@ -183,8 +192,8 @@ multi-agent flows, SSE assertions, publish smoke).
 ### 6.1 Reset everything
 
 ```bash
-./scripts/down.py --clear         # interactive; drops all workspace state + platform pg/redis
-./scripts/down.py --clear --force # non-interactive
+./scripts/down.py dev --clear         # interactive; drops all workspace state + platform pg/redis
+./scripts/down.py dev --clear --force # non-interactive
 ```
 
 Wipes per-workspace containers, per-project compose state, workspace
@@ -194,11 +203,11 @@ platform images survive; use `--nuclear` to drop those too.
 ### 6.2 Stop without losing state
 
 ```bash
-./scripts/down.py                 # docker compose down — keeps volumes + .data/*
+./scripts/down.py dev             # docker compose down — keeps volumes + .data/*
 ```
 
 `docker compose down` removes the stack containers but leaves every
-named volume and the `.data/` tree intact.  The next `./scripts/up.py`
+named volume and the `.data/` tree intact.  The next `./scripts/up.py dev`
 recreates the containers from the existing volumes.
 
 ### 6.3 Apply a new migration
@@ -218,7 +227,7 @@ start by `apps/worker/entrypoint.sh`), so no second install needed.
 ```bash
 ./scripts/build.py --only workspace
 # Per-session workspace containers keep the old image until next session;
-# `./scripts/down.py --clear` wipes them so new sessions get the new image.
+# `./scripts/down.py dev --clear` wipes them so new sessions get the new image.
 ```
 
 `./scripts/build.py --only workspace` triggers on changes to:
@@ -260,13 +269,13 @@ only**.  Set `SELKIES_PASSWORD` on the service to gate it.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `./scripts/up.py` complains about Docker | Daemon not running or current user not in `docker` group | Start Docker; `sudo usermod -aG docker $USER && exec newgrp docker` |
+| `./scripts/up.py dev` complains about Docker | Daemon not running or current user not in `docker` group | Start Docker; `sudo usermod -aG docker $USER && exec newgrp docker` |
 | Traefik 502 on apex / vnc | api / web container still booting (uvicorn `--reload`, Vite cold start) | Wait ~10s; `docker compose -f compose.dev.yaml logs <svc>` |
 | TLS cert errors on first up | Cloudflare DNS-01 hasn't completed yet | Watch `docker logs polaris-traefik-1`; first issue takes ~30–60s |
 | `polaris/ide` build hangs ~5 min | Yarn workspaces + Theia compile on first build | Normal; subsequent builds use the cache |
 | Session stays `queued` | Worker not running or crashed | `docker compose -f compose.dev.yaml logs worker -f`; restart with `docker compose -f compose.dev.yaml restart worker` |
 | IDE iframe shows "waiting for agent" forever | Codex never called `set_project_root` | `docker logs polaris-ws-<hash>` for the Codex transcript; often a scaffold crash |
-| Workspace container exits with auth error | `~/.codex/auth.json` missing on host | `codex login` on the host, then `./scripts/down.py --clear && ./scripts/up.py` |
+| Workspace container exits with auth error | `~/.codex/auth.json` missing on host | `codex login` on the host, then `./scripts/down.py dev --clear && ./scripts/up.py dev` |
 
 ---
 

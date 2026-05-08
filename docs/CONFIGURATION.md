@@ -2,14 +2,24 @@
 
 ## Single Source
 
-The repo-root `.env` is the single configuration source. `apps/api`, `apps/worker`,
-and the `packages/design-intent` LangGraph all read it. `.env.example` is the
-template.
+`.env.dev` (for the dev stack) and `.env.stage` (for the stage stack)
+at the repo root are the configuration sources.  `apps/api`,
+`apps/worker`, and the `packages/design-intent` LangGraph read whichever
+one compose injects via its `env_file:` directive.  `.env.example` is
+the shared template.
 
 ```sh
-cp .env.example .env   # fill in secrets (or let `up.py`'s wizard do it)
-./scripts/up.py        # configure (if needed) + start the stack
+cp .env.example .env.dev    # fill in secrets (or let the wizard do it)
+./scripts/up.py dev         # configure (if needed) + start the dev stack
+# stage variant:
+cp .env.example .env.stage
+./scripts/up.py stage
 ```
+
+dev and stage are independent — each has its own env file, its own
+compose project name (`polaris` vs `polaris-stage`), and its own
+named volumes.  The two stacks coexist on one host without clobbering
+each other's state.
 
 ## Environment Variables
 
