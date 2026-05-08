@@ -43,3 +43,8 @@ playwright/.cache/
 # Playwright MCP runtime artifacts (per-session console logs and
 # screenshots; regenerated on every browser run).
 .playwright-mcp/
+
+# Ad-hoc screenshots dropped at the repo root (drag-and-drop aids,
+# bug repros, design references).  Real frontend assets live under
+# `apps/web/public/` — those PNGs are not affected.
+/*.png
