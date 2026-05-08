@@ -7,8 +7,8 @@ and the `packages/design-intent` LangGraph all read it. `.env.example` is the
 template.
 
 ```sh
-cp .env.example .env   # fill in secrets
-make dev               # bootstrap + start everything
+cp .env.example .env   # fill in secrets (or let `up.py`'s wizard do it)
+./scripts/up.py        # configure (if needed) + start the stack
 ```
 
 ## Environment Variables
@@ -191,26 +191,22 @@ POLARIS_TRAEFIK_PUBLIC_NETWORK=traefik-public
 
 ## TLS Certificates
 
-Three Let's Encrypt wildcard cert pairs (dev + publish + S3 planes).
-Wildcard SANs only match one label, so each needs its own cert.
+Traefik issues three Let's Encrypt wildcard cert pairs (platform +
+publish + S3 planes) via Cloudflare DNS-01 ACME.  Wildcard SANs only
+match one label, so each plane needs its own cert.
 
-```sh
-sudo certbot certonly --manual --preferred-challenges dns \
-  -d polaris-dev.xyz -d "*.polaris-dev.xyz"
-sudo certbot certonly --manual --preferred-challenges dns \
-  -d prod.polaris-dev.xyz -d "*.prod.polaris-dev.xyz"
-sudo certbot certonly --manual --preferred-challenges dns \
-  -d "*.s3.polaris-dev.xyz"
+```
+CF_API_TOKEN=<cloudflare DNS-edit token, scoped to the parent zone>
+ACME_EMAIL=admin@<your-domain>
 ```
 
-Certs land under `/etc/letsencrypt/live/<domain>/{fullchain,privkey}.pem`
-and are loaded by `infra/traefik/dynamic/certs.yaml`. The traefik compose
-file bind-mounts the whole `/etc/letsencrypt` tree read-only (mounting just
-`live/` would break the symlinks into `archive/`).
+`./scripts/up.py` validates the token live before bringing the stack
+up; Traefik then issues + renews automatically.  No host-side
+`certbot`, no `/etc/letsencrypt/` to bind-mount.
 
-DNS: `polaris-dev.xyz`, `*.polaris-dev.xyz`, `prod.polaris-dev.xyz`,
-`*.prod.polaris-dev.xyz`, and `*.s3.polaris-dev.xyz` must all resolve to
-the host running traefik.
+DNS: `${POLARIS_DOMAIN}`, `*.${POLARIS_DOMAIN}`,
+`${POLARIS_PROD_DOMAIN_BASE}`, `*.${POLARIS_PROD_DOMAIN_BASE}`, and
+`*.s3.${POLARIS_DOMAIN}` must all resolve to the host running Traefik.
 
 ## Codex Authentication
 
@@ -244,9 +240,14 @@ The chromium-vnc container uses Selkies with hardened configuration:
 
 ## Welcome Page
 
-`make welcome-page` builds `packages/welcome-page/dist/`. On workspace startup,
-the API copies it into per-workspace browser-config. A `welcome` nginx sidecar
-serves it at `http://welcome/`.
+```sh
+pnpm --filter @polaris/welcome-page build
+```
+
+emits `packages/welcome-page/dist/`.  On workspace startup, the API copies
+it into the per-workspace browser-config dir; a `welcome` nginx sidecar
+serves it at `http://welcome/`.  When the `dist/` is missing, chromium
+boots to `about:blank` and the API logs the build hint instead of failing.
 
 ## Secrets.env Escaping
 

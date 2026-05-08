@@ -39,7 +39,7 @@ App
 │   │   ├── ClarificationCard  (structured questions from agent — discovery OR codex)
 │   │   └── Plan approval (Proceed button after plan mode turn)
 │   ├── Working indicator ("Polaris 工作中" pill + spinner)
-│   ├── Restart Dialog    (shadcn Dialog, replaces window.confirm)
+│   ├── Restart Dialog    (shadcn Dialog confirmation)
 │   └── Input form        (Ctrl/Cmd+Enter to send; shortcut hint; Stop button)
 ├── ProjectSwitcher       (left Sheet drawer)
 ├── PublishPanel          (right Sheet drawer — "Publish now" button + rollback history)
@@ -62,7 +62,7 @@ App
 
 Three-state toggle group in header:
 - **Browser** 🌐 — VNC iframe
-- **代码编辑器 / Code editor** </> — Theia iframe (auto-selected when `set_project_root` fires).  The i18n key is still `chat.tabs.ide` for back-compat, but all user-visible strings show "代码编辑器" / "Code editor".
+- **代码编辑器 / Code editor** </> — Theia iframe (auto-selected when `set_project_root` fires).  i18n key: `chat.tabs.ide` → "Code editor" / "代码编辑器".
 - **Hide** 👁‍🗨 — right pane hidden, chat fills viewport
 
 Auto-switch rules:
@@ -83,9 +83,9 @@ also sends `build_direct` when clicked.
 | `discover_then_build` | `sessions.length === 0` for the project | `plan` (after discovery finishes) |
 | `build_direct` | Default for 2nd+ messages AND for the Proceed-on-plan button | `default` |
 
-`build_planned` still exists on the backend (default when `mode` is
-omitted) but the frontend never sends it — it's reserved for scripted
-callers that want a plan round on every turn.
+`build_planned` is the backend default when `mode` is omitted; the
+frontend doesn't send it — it's available to scripted callers that
+want a plan round on every turn.
 
 ## Chat Event Kinds → Visuals
 

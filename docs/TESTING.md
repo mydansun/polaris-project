@@ -2,27 +2,40 @@
 
 ## Static Checks
 
+The repo uses a single root-level uv workspace; everything below resolves
+into the shared `.venv/` materialised by `uv sync --all-packages --all-extras`.
+
 ```sh
-apps/api/.venv/bin/python -m ruff check apps/api packages/agent-core apps/worker
-apps/api/.venv/bin/pytest apps/api/tests -v
-apps/worker/.venv/bin/pytest packages/design-intent -v
-pnpm typecheck
+uv run ruff check apps/api packages/agent-core apps/worker
+uv run --package polaris-api pytest apps/api/tests -v
+uv run --package polaris-worker pytest apps/worker/tests -v
+uv run --package polaris-design-intent pytest packages/design-intent/tests -v
+
+# scripts/ has its own self-contained env (PEP 723 inline deps).
+cd scripts && uv run --group dev pytest
+
+# Frontend type-check runs inside the web container (no host pnpm needed).
+docker compose -f compose.dev.yaml run --rm web pnpm typecheck
 ```
 
 ## IDE Smoke Tests
 
-`packages/ide` Dockerfile runs Playwright tests automatically during `make build-ide`:
-- HTTP 200 (not 404), Theia shell renders, custom welcome page, Explorer expanded, no trust dialog
+`packages/ide/Dockerfile` runs Playwright tests automatically during
+`./scripts/build.py --only ide`:
+- HTTP 200 (not 404), Theia shell renders, custom welcome page,
+  Explorer expanded, no trust dialog.
 
-Local: `cd packages/ide && yarn build && yarn start &` → `yarn test`
+For an interactive run on the host:
+`cd packages/ide && yarn build && yarn start &` → `yarn test`.
 
 ## Quick Smoke (End-to-End)
 
 ```sh
-make clear && make dev
+./scripts/down.py --clear && ./scripts/up.py
 ```
 
-Visit `https://polaris-dev.xyz/`, sign in (or "Dev Login"), send a prompt.
+Visit `https://${POLARIS_DOMAIN}/` (default suggestion `polaris-dev.xyz`),
+sign in (or click **Dev Login**), send a prompt.
 
 ## Auth Flow
 
@@ -161,6 +174,6 @@ SELECT id, status, LEFT(git_commit_hash, 7), domain FROM deployments ORDER BY cr
 # the global cap.
 
 # Inspect the sorted sets:
-docker exec polaris-project-redis-1 redis-cli ZRANGEBYSCORE polaris:runs:global -inf +inf WITHSCORES
-docker exec polaris-project-redis-1 redis-cli KEYS 'polaris:runs:user:*'
+docker exec polaris-redis-1 redis-cli ZRANGEBYSCORE polaris:runs:global -inf +inf WITHSCORES
+docker exec polaris-redis-1 redis-cli KEYS 'polaris:runs:user:*'
 ```

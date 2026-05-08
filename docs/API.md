@@ -37,7 +37,7 @@ A Session is created per user message.  The orchestrator runs one or more
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/projects/{id}/sessions` | Create session. Body: `{ message, mode? }` where mode is `discover_then_build` (frontend sends this on the first message of a project) \| `build_direct` (frontend default for 2nd+ messages AND for the Proceed-on-plan button) \| `build_planned` (backend default when `mode` is omitted; not currently sent by the frontend — kept for scripted callers that want a plan round). Returns **HTTP 429** with `{detail: {reason: "global_quota" \| "user_quota", limit: N}}` when the concurrency cap is hit. |
+| POST | `/projects/{id}/sessions` | Create session. Body: `{ message, mode? }` where mode is `discover_then_build` (frontend sends this on the first message of a project) \| `build_direct` (frontend default for 2nd+ messages AND for the Proceed-on-plan button) \| `build_planned` (backend default when `mode` is omitted; the frontend doesn't send it — available to scripted callers that want a plan round). Returns **HTTP 429** with `{detail: {reason: "global_quota" \| "user_quota", limit: N}}` when the concurrency cap is hit. |
 | GET  | `/projects/{id}/sessions?limit=N&before_sequence=M` | List sessions (paginated, newest first) |
 | GET  | `/sessions/{id}` | Session detail (agent_runs + their events) |
 | GET  | `/sessions/{id}/events` | SSE stream |
@@ -46,9 +46,7 @@ A Session is created per user message.  The orchestrator runs one or more
 
 ### SSE events
 
-All envelopes include `session_id` and, where relevant, `run_id`.  (The
-old `turn_id` wire alias has been removed — frontend and backend are
-now both session-native end-to-end.)
+All envelopes include `session_id` and, where relevant, `run_id`.
 
 ```jsonc
 { "kind": "session_started",   "session_id": "..." }

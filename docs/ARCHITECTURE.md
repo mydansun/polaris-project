@@ -44,8 +44,8 @@ Edge: Traefik v3 @ :80/:443
 
 Every user message produces one **Session**.  Inside a Session the orchestrator
 runs one or more **AgentRun**s in sequence; each AgentRun emits a stream of
-**Event**s.  This replaces the older single-level Turn/TurnItem model and
-makes multi-agent workflows (discovery → codex) a first-class DB concept.
+**Event**s.  Multi-agent workflows (discovery → codex) are first-class
+in the DB.
 
 ```
 Session (one per user message)
@@ -70,7 +70,7 @@ Session modes:
 |---|---|---|
 | `discover_then_build` | DiscoveryAgent → CodexAgent (`plan`) | First message of a project (auto-routed by frontend) |
 | `build_direct`  | Codex `default` | Frontend default for 2nd+ messages AND for the Proceed-on-plan button |
-| `build_planned` | Codex `plan` | Backend default when `mode` is omitted; not currently sent by the frontend (kept for scripted callers that want a plan round on every turn) |
+| `build_planned` | Codex `plan` | Backend default when `mode` is omitted; the frontend doesn't send it (available to scripted callers that want a plan round on every turn) |
 
 The frontend deliberately skips the plan/proceed handshake on iteration
 turns — after the initial `discover_then_build` produces its plan, the
@@ -188,16 +188,15 @@ Codex (`request_user_input`).  Both paths land on the same frontend card.
 5. Agent unblocks with answers.
 
 Questions use non-technical language.  Visual-direction choices are
-still industry-tailored by the clarifier's system prompt, but the
-5-color **primary color palette is LLM-generated per project** via a
-dedicated graph node:
+industry-tailored by the clarifier's system prompt; the 5-color
+**primary color palette is LLM-generated per project** via a dedicated
+graph node:
 
 - Clarifier LLM emits a `propose_color_palette(industry,
   visual_direction, audience, language)` tool call
-- `palette_step` (new LangGraph node, see `nodes/clarifier.py`) runs a
-  color-theorist system prompt against `compiler_model` (flagship),
-  parses the response as `[{id, label, swatch}]` × 5 with hex-regex
-  validation
+- `palette_step` (`nodes/clarifier.py`) runs a color-theorist system
+  prompt against `compiler_model` (flagship), parses the response as
+  `[{id, label, swatch}]` × 5 with hex-regex validation
 - On any parse / LLM failure, falls back to a neutral default palette
   so the clarifier loop never deadlocks
 - Returned options flow straight into the next `ask_questions` call as
@@ -296,10 +295,9 @@ UI responsiveness and actual worker cooperation are separate concerns:
    WebSocket; `DiscoveryAgent.handle_control` cancels the in-flight
    `run_design_intent` asyncio task.
 4. **Agent return paths** — both map their interrupted state to
-   `RunOutcome(status="interrupted")` (CodexAgent's earlier bug where
-   `"interrupted"` fell through to `"completed"` was fixed).
+   `RunOutcome(status="interrupted")`.
 5. **Orchestrator** treats `outcome.status == "interrupted"` as
-   terminal (new branch alongside the existing `"failed"`), calls
+   terminal (alongside `"failed"`), calls
    `_finalize_session(status="interrupted")`, and polls
    `sessions.status` before each agent in the loop so an API-initiated
    interrupt arriving between agents also short-circuits.

@@ -10,10 +10,9 @@ in browser → publish to `<uuid>.prod.polaris-dev.xyz`.
 ## Verified Milestones
 
 ### Session / Multi-agent
-- **Session / AgentRun / Event model** — replaces single-level Turn/TurnItem;
-  one Session per user message, 1+ AgentRuns per Session (discovery → codex).
-  Frontend + backend are now session-native end-to-end; the old `turn_id`
-  wire alias has been removed.
+- **Session / AgentRun / Event model** — one Session per user message,
+  1+ AgentRuns per Session (discovery → codex).  Frontend + backend are
+  session-native end-to-end.
 - **Three session modes** — `discover_then_build` (first message of a
   project; auto-routed by frontend), `build_direct` (frontend default for
   2nd+ messages AND for the Proceed-on-plan button), `build_planned`
@@ -43,8 +42,7 @@ in browser → publish to `<uuid>.prod.polaris-dev.xyz`.
 - **LLM-generated color palette** — clarifier calls a dedicated
   `propose_color_palette` tool; `palette_step` graph node produces 5
   context-tailored hex options per project (validated by regex,
-  falls back to a neutral default on parse failure).  Replaces the
-  earlier hardcoded 5-color palette.
+  falls back to a neutral default on parse failure).
 - **Plan translation** — each Codex plan is rewritten into a non-technical
   "Overview" via a separate gpt-5.4 call; frontend renders a shadcn Tabs
   card (Overview / Details).
