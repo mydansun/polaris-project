@@ -145,6 +145,8 @@ services:
   # One-shot schema migrator.  Runs `alembic upgrade head` against
   # postgres and exits; api/worker gate on its successful completion so
   # `up.py dev` is the single command needed to bring up a fresh checkout.
+  # `entrypoint.sh` cd's to ${POLARIS_HOST_REPO_ROOT}, so we cd back
+  # into apps/api here — alembic resolves alembic.ini relative to cwd.
   migrate:
     image: polaris/api:dev
     build:
@@ -161,11 +163,13 @@ services:
         required: false
     volumes:
       - "${PWD}:${PWD}"
-    working_dir: ${PWD}/apps/api
     networks:
       - polaris-shared
     restart: "no"
-    command: ["alembic", "upgrade", "head"]
+    command:
+      - sh
+      - -c
+      - cd ${POLARIS_HOST_REPO_ROOT}/apps/api && exec alembic upgrade head
 
   api:
     image: polaris/api:dev
