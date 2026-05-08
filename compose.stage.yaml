@@ -164,7 +164,8 @@ services:
       POLARIS_HOST_REPO_ROOT: ${PWD}
       POLARIS_HOST_CODEX_AUTH_PATH: ${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}
     env_file:
-      - .env
+      - path: .env.stage
+        required: false
     volumes:
       # Same path inside as outside — keeps generated workspace compose
       # bind-mount paths valid both for the host docker daemon AND for
@@ -218,7 +219,8 @@ services:
       POLARIS_HOST_REPO_ROOT: ${PWD}
       POLARIS_HOST_CODEX_AUTH_PATH: ${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}
     env_file:
-      - .env
+      - path: .env.stage
+        required: false
     volumes:
       - "${PWD}:${PWD}"
       - /var/run/docker.sock:/var/run/docker.sock

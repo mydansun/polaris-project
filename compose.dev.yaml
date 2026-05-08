@@ -169,7 +169,11 @@ services:
       # `compose up` so the bind-mount never fails.
       POLARIS_HOST_CODEX_AUTH_PATH: ${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}
     env_file:
-      - .env
+      # Optional: tests run `docker compose config` without the file
+      # populated; runtime callers still need it for the wizard-managed
+      # secrets.
+      - path: .env.dev
+        required: false
     volumes:
       # Same path inside as outside — keeps generated workspace compose
       # bind-mount paths valid both for the host docker daemon AND for
@@ -211,7 +215,11 @@ services:
       # `compose up` so the bind-mount never fails.
       POLARIS_HOST_CODEX_AUTH_PATH: ${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}
     env_file:
-      - .env
+      # Optional: tests run `docker compose config` without the file
+      # populated; runtime callers still need it for the wizard-managed
+      # secrets.
+      - path: .env.dev
+        required: false
     volumes:
       - "${PWD}:${PWD}"
       - /var/run/docker.sock:/var/run/docker.sock
@@ -231,7 +239,11 @@ services:
       # vite.config.ts; HMR target uses wss://${POLARIS_DOMAIN}:443.
       POLARIS_DOMAIN: ${POLARIS_DOMAIN}
     env_file:
-      - .env
+      # Optional: tests run `docker compose config` without the file
+      # populated; runtime callers still need it for the wizard-managed
+      # secrets.
+      - path: .env.dev
+        required: false
     volumes:
       # Bind-mount the whole apps/web (including node_modules' pnpm
       # symlinks) + the root node_modules where pnpm's .pnpm/ store

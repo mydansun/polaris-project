@@ -3,22 +3,30 @@
 # requires-python = ">=3.11"
 # dependencies = ["questionary>=2.0", "httpx>=0.27"]
 # ///
-"""up.py — configure (if needed) + start the polaris dev stack.
+"""up.py — configure (if needed) + start the polaris stack.
 
-First-run flow:
-  1. Detect missing required env in .env.
+Two modes:
+  ./scripts/up.py             # interactive prompt for dev | stage
+  ./scripts/up.py dev         # explicit
+  ./scripts/up.py stage       # explicit (single-host self-hosted)
+
+Each mode owns its own ``.env.<mode>`` and ``compose.<mode>.yaml``.
+
+First-run flow (per mode):
+  1. Detect missing required env in .env.<mode>.
   2. Run the questionary wizard (lib.wizard.run_wizard).
   3. Validate live tokens (CF, OpenAI, Pinterest).
   4. Auto-generate SESSION_SECRET if blank.
   5. docker-daemon + dockerfile-mtime preflight.
-  6. docker compose -f compose.dev.yaml up -d.
+  6. docker compose -f compose.<mode>.yaml up -d --build.
   7. Wait for service healthchecks.
   8. Print "open https://${POLARIS_DOMAIN}".
 
 Re-runs:
-  --reconfigure   force the wizard even if .env looks complete
+  --reconfigure   force the wizard even if .env.<mode> looks complete
   --non-interactive  pull values from existing env, fail on any missing
-                  required field (CI mode).
+                  required field (CI mode); defaults to mode=dev when
+                  no positional mode is given.
   --skip-build    don't auto-trigger build.py even if Dockerfiles changed
 """
 from __future__ import annotations
@@ -99,7 +107,7 @@ def _ensure_codex_auth(env: dict[str, str]) -> str:
                 "  Fix one of:\n"
                 "    1. Run `codex login` on the host (writes OAuth tokens), or\n"
                 "    2. Write `{\"OPENAI_API_KEY\": \"sk-...\"}` to the file directly, or\n"
-                "    3. Set POLARIS_SKIP_CODEX_AUTH_CHECK=1 in .env to bypass this check\n"
+                "    3. Set POLARIS_SKIP_CODEX_AUTH_CHECK=1 in .env.<mode> to bypass\n"
                 "       (workspaces will fail every codex turn with 401 until auth is set).",
                 file=sys.stderr,
             )
@@ -163,16 +171,14 @@ def _maybe_build(skip: bool) -> None:
 # ── compose up + wait ────────────────────────────────────────────────────
 
 
-def _compose_up() -> None:
-    cf = paths.compose_file()
+def _compose_up(cf: Path) -> None:
     print(f"▶ docker compose -f {cf.name} up -d --build", flush=True)
     docker_ops.compose(cf, "up", "-d", "--build")
 
 
-def _wait_healthy(timeout: float = 90.0) -> bool:
+def _wait_healthy(cf: Path, timeout: float = 90.0) -> bool:
     """Poll `docker compose ps` until all services with healthchecks are
     reporting `healthy` (or the timeout fires)."""
-    cf = paths.compose_file()
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         p = docker_ops.compose(
@@ -197,11 +203,47 @@ def _wait_healthy(timeout: float = 90.0) -> bool:
     return False
 
 
+# ── mode resolution ──────────────────────────────────────────────────────
+
+
+def _resolve_mode(cli_mode: str | None, *, non_interactive: bool) -> str:
+    """Pick the mode: explicit CLI arg > interactive prompt > dev (CI default)."""
+    if cli_mode is not None:
+        return cli_mode
+    if non_interactive:
+        return "dev"
+    try:
+        import questionary  # type: ignore
+    except ImportError:
+        # questionary should always be present (script-level deps); fall
+        # back to a plain input prompt so we don't crash on an exotic env.
+        ans = input("which mode? [dev/stage] (dev): ").strip().lower()
+        if ans not in paths.MODES:
+            ans = "dev"
+        return ans
+    answer = questionary.select(
+        "Which mode?",
+        choices=list(paths.MODES),
+        default="dev",
+    ).ask()
+    if answer is None:  # ctrl-c / esc
+        print("aborted", file=sys.stderr)
+        raise SystemExit(130)
+    return answer
+
+
 # ── main ────────────────────────────────────────────────────────────────
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Configure + start polaris dev stack.")
+    ap = argparse.ArgumentParser(description="Configure + start polaris stack.")
+    ap.add_argument(
+        "mode",
+        nargs="?",
+        choices=paths.MODES,
+        default=None,
+        help="dev | stage (prompted if omitted, defaults to dev under --non-interactive)",
+    )
     ap.add_argument("--reconfigure", action="store_true", help="force the wizard")
     ap.add_argument(
         "--non-interactive",
@@ -215,14 +257,18 @@ def main() -> int:
     )
     args = ap.parse_args()
 
+    mode = _resolve_mode(args.mode, non_interactive=args.non_interactive)
+    print(f"→ mode: {mode}", file=sys.stderr)
+
     _check_docker()
 
-    env_path = paths.env_file()
+    env_path = paths.env_file(mode)
+    cf = paths.compose_file(mode)
     current = env_io.read(env_path)
     missing = [k for k in spec.required_keys(current) if not current.get(k, "").strip()]
 
     if args.reconfigure or missing:
-        print("→ launching configuration wizard", file=sys.stderr)
+        print(f"→ launching configuration wizard ({env_path.name})", file=sys.stderr)
         current = wizard.run_wizard(
             env_path=env_path,
             only_missing=not args.reconfigure,
@@ -237,15 +283,15 @@ def main() -> int:
     os.chdir(paths.REPO_ROOT)
     os.environ["PWD"] = str(paths.REPO_ROOT)
     # Make sure docker compose interpolates the resolved (touched) codex
-    # auth path even when it wasn't explicitly set in .env.
+    # auth path even when it wasn't explicitly set in .env.<mode>.
     os.environ["POLARIS_HOST_CODEX_AUTH_PATH"] = codex_auth_path
 
-    _compose_up()
+    _compose_up(cf)
     print("▶ waiting for healthchecks (≤ 90s) …", flush=True)
-    if not _wait_healthy():
+    if not _wait_healthy(cf):
         print(
-            "⚠ some services didn't become healthy within 90s.  Check "
-            "`docker compose -f compose.dev.yaml ps` and logs.",
+            f"⚠ some services didn't become healthy within 90s.  Check "
+            f"`docker compose -f {cf.name} ps` and logs.",
             file=sys.stderr,
         )
 
@@ -255,7 +301,7 @@ def main() -> int:
         # POLARIS_DOMAIN is set before we get here.  Surface loudly
         # rather than print a misleading https:// URL.
         raise RuntimeError("POLARIS_DOMAIN missing after wizard — refusing to print bogus URLs.")
-    print(f"\n✓ stack up.")
+    print(f"\n✓ {mode} stack up.")
     print(f"   web   →  https://{domain}")
     print(f"   vnc   →  https://vnc.{domain}    (chromium auto-loaded with {domain})")
     print()

@@ -104,7 +104,12 @@ class Settings(BaseSettings):
         #   parents[2] design-intent/
         #   parents[3] packages/
         #   parents[4] <repo root>
-        env_file=str(Path(__file__).resolve().parents[4] / ".env"),
+        # Disk fallback for native callers (pytest, scripts).  The
+        # containerized worker gets values via compose's `env_file:`
+        # directive; this read is only used outside the stack.  Default
+        # to .env.dev — explicitly pass kwargs / os.environ for
+        # stage-flavoured native runs.
+        env_file=str(Path(__file__).resolve().parents[4] / ".env.dev"),
         extra="ignore",
         # Let tests construct Settings(pinterest_api_key=...) directly
         # without going through the env-var alias.

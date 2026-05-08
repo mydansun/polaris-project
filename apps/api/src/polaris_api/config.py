@@ -249,7 +249,14 @@ class Settings(BaseSettings):
     )
 
     model_config = SettingsConfigDict(
-        env_file=str(Path(__file__).resolve().parents[4] / ".env"),
+        # Disk fallback for native callers (pytest, scripts).  The
+        # containerized api/worker get values via compose's `env_file:`
+        # directive, which docker injects as real env vars before
+        # pydantic-settings runs — so this disk read is only used
+        # outside the stack.  Default to .env.dev (the local-loop
+        # workflow); explicitly pass kwargs / set os.environ for
+        # stage-flavoured native runs.
+        env_file=str(Path(__file__).resolve().parents[4] / ".env.dev"),
         extra="ignore",
     )
 

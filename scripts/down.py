@@ -3,7 +3,12 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""down.py — stop the dev stack + sweep dynamic containers.
+"""down.py — stop the polaris stack + sweep dynamic containers.
+
+Two modes (mirror up.py):
+  ./scripts/down.py             # interactive prompt for dev | stage
+  ./scripts/down.py dev         # explicit
+  ./scripts/down.py stage       # explicit
 
 Three destruction levels:
   (no flag)    docker compose down (preserves all volumes + .data)
@@ -11,9 +16,9 @@ Three destruction levels:
   --nuclear    --clear + remove built platform images
 
 Dynamic containers (polaris-ws-*, polaris-pub-*, etc.) live OUTSIDE
-compose.dev.yaml — they're spawned by api at runtime via docker socket.
-We sweep them by label `polaris.runtime` plus name-pattern fallback for
-anything pre-label.
+compose.<mode>.yaml — they're spawned by api at runtime via docker
+socket.  We sweep them by label `polaris.runtime` plus name-pattern
+fallback for anything pre-label.
 
 Confirmation prompts are interactive by default; --force skips them.
 """
@@ -71,10 +76,17 @@ def _wipe_data_dirs() -> None:
             shutil.rmtree(t, ignore_errors=True)
 
 
-def _remove_built_images() -> None:
-    tags = ["polaris/api:dev", "polaris/worker:dev", "polaris/web:dev",
-            "polaris/ide:latest", "polaris/workspace:latest",
-            "polaris/chromium-vnc:latest"]
+def _remove_built_images(mode: str) -> None:
+    # Per-mode platform images, plus the workspace runtime trio that
+    # both modes share (those don't carry a mode tag).
+    tags = [
+        f"polaris/api:{mode}",
+        f"polaris/worker:{mode}",
+        f"polaris/web:{mode}",
+        "polaris/ide:latest",
+        "polaris/workspace:latest",
+        "polaris/chromium-vnc:latest",
+    ]
     print(f"  removing platform images: {len(tags)}")
     for t in tags:
         if docker_ops.image_exists(t):
@@ -86,9 +98,38 @@ def _remove_built_images() -> None:
             )
 
 
+def _resolve_mode(cli_mode: str | None) -> str:
+    """Mirror up.py: explicit > interactive prompt > dev fallback."""
+    if cli_mode is not None:
+        return cli_mode
+    try:
+        import questionary  # type: ignore
+        answer = questionary.select(
+            "Which mode?",
+            choices=list(paths.MODES),
+            default="dev",
+        ).ask()
+        if answer is None:
+            print("aborted", file=sys.stderr)
+            raise SystemExit(130)
+        return answer
+    except ImportError:
+        ans = input("which mode? [dev/stage] (dev): ").strip().lower()
+        if ans not in paths.MODES:
+            ans = "dev"
+        return ans
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Stop the polaris dev stack + sweep dynamic containers."
+        description="Stop the polaris stack + sweep dynamic containers."
+    )
+    ap.add_argument(
+        "mode",
+        nargs="?",
+        choices=paths.MODES,
+        default=None,
+        help="dev | stage (prompted if omitted)",
     )
     ap.add_argument(
         "--clear",
@@ -106,11 +147,14 @@ def main() -> int:
     if args.nuclear:
         args.clear = True
 
+    mode = _resolve_mode(args.mode)
+    print(f"→ mode: {mode}", file=sys.stderr)
+
     if not docker_ops.docker_daemon_up():
         print("⚠ docker daemon not reachable — nothing to stop", file=sys.stderr)
         return 0
 
-    cf = paths.compose_file()
+    cf = paths.compose_file(mode)
 
     print("▶ docker compose down")
     if args.clear:
@@ -133,13 +177,13 @@ def main() -> int:
 
     if args.nuclear:
         if not _confirm(
-            "  this will REMOVE built images (polaris/api,worker,web,workspace,ide,chromium-vnc)",
+            f"  this will REMOVE built images (polaris/api:{mode},worker:{mode},web:{mode},workspace,ide,chromium-vnc)",
             force=args.force,
         ):
             print("aborted (data already wiped, but images kept)", file=sys.stderr)
             return 0
         print("\n▶ removing built platform images")
-        _remove_built_images()
+        _remove_built_images(mode)
 
     print(f"\n✓ done.  swept {swept} runtime container(s).")
     return 0
