@@ -8,6 +8,18 @@ Polaris 是一个面向终端用户的 AI 全栈 app 构建平台。平台把自
 brief compiler → mood board generator),产出 design brief 和生成的
 mood board,然后 Codex 接手。后续消息直接走 Codex 的 plan / build mode。
 
+## 文档
+
+- [README · English](./README.md)
+- [开发](./docs/DEVELOPMENT.zh.md) · [English](./docs/DEVELOPMENT.md)
+- [Staging](./docs/STAGING.zh.md) · [English](./docs/STAGING.md)
+- [架构](./docs/ARCHITECTURE.zh.md) · [English](./docs/ARCHITECTURE.md)
+- [API 参考](./docs/API.zh.md) · [English](./docs/API.md)
+- [配置](./docs/CONFIGURATION.zh.md) · [English](./docs/CONFIGURATION.md)
+- [前端](./docs/FRONTEND.zh.md) · [English](./docs/FRONTEND.md)
+- [路线图](./docs/ROADMAP.zh.md) · [English](./docs/ROADMAP.md)
+- [测试](./docs/TESTING.zh.md) · [English](./docs/TESTING.md)
+
 ## Quick Start
 
 ```sh
@@ -165,14 +177,3 @@ compose.dev.yaml   Dev 栈(Vite HMR + uvicorn --reload + 源码 bind-mount)
 compose.stage.yaml Stage 栈(nginx 静态包,无 --reload,project 名 polaris-stage)
 ```
 
-## 文档
-
-- [README · English](./README.md)
-- [开发](./docs/DEVELOPMENT.zh.md) · [English](./docs/DEVELOPMENT.md)
-- [Staging](./docs/STAGING.zh.md) · [English](./docs/STAGING.md)
-- [架构](./docs/ARCHITECTURE.zh.md) · [English](./docs/ARCHITECTURE.md)
-- [API 参考](./docs/API.zh.md) · [English](./docs/API.md)
-- [配置](./docs/CONFIGURATION.zh.md) · [English](./docs/CONFIGURATION.md)
-- [前端](./docs/FRONTEND.zh.md) · [English](./docs/FRONTEND.md)
-- [路线图](./docs/ROADMAP.zh.md) · [English](./docs/ROADMAP.md)
-- [测试](./docs/TESTING.zh.md) · [English](./docs/TESTING.md)

@@ -10,6 +10,18 @@ First messages route through a **discovery agent** (LangGraph: clarifier
 design brief and a generated visual mood board before Codex takes over.
 Subsequent messages run Codex directly with plan / build modes.
 
+## Documentation
+
+- [README · 中文](./README.zh.md)
+- [Development](./docs/DEVELOPMENT.md) · [中文](./docs/DEVELOPMENT.zh.md)
+- [Staging](./docs/STAGING.md) · [中文](./docs/STAGING.zh.md)
+- [Architecture](./docs/ARCHITECTURE.md) · [中文](./docs/ARCHITECTURE.zh.md)
+- [API Reference](./docs/API.md) · [中文](./docs/API.zh.md)
+- [Configuration](./docs/CONFIGURATION.md) · [中文](./docs/CONFIGURATION.zh.md)
+- [Frontend](./docs/FRONTEND.md) · [中文](./docs/FRONTEND.zh.md)
+- [Roadmap](./docs/ROADMAP.md) · [中文](./docs/ROADMAP.zh.md)
+- [Testing](./docs/TESTING.md) · [中文](./docs/TESTING.zh.md)
+
 ## Quick Start
 
 ```sh
@@ -174,14 +186,3 @@ compose.dev.yaml   Dev stack (Vite HMR + uvicorn --reload + bind-mounted source)
 compose.stage.yaml Stage stack (nginx-served bundle, no --reload, project name polaris-stage)
 ```
 
-## Documentation
-
-- [README · 中文](./README.zh.md)
-- [Development](./docs/DEVELOPMENT.md) · [中文](./docs/DEVELOPMENT.zh.md)
-- [Staging](./docs/STAGING.md) · [中文](./docs/STAGING.zh.md)
-- [Architecture](./docs/ARCHITECTURE.md) · [中文](./docs/ARCHITECTURE.zh.md)
-- [API Reference](./docs/API.md) · [中文](./docs/API.zh.md)
-- [Configuration](./docs/CONFIGURATION.md) · [中文](./docs/CONFIGURATION.zh.md)
-- [Frontend](./docs/FRONTEND.md) · [中文](./docs/FRONTEND.zh.md)
-- [Roadmap](./docs/ROADMAP.md) · [中文](./docs/ROADMAP.zh.md)
-- [Testing](./docs/TESTING.md) · [中文](./docs/TESTING.zh.md)
