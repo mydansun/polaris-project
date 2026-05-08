@@ -15,6 +15,7 @@ from polaris_api.models import (
     Deployment,
     DesignIntent,
     Project,
+    ProjectVersion,
     Session as SessionRow,
     User,
     Workspace,
@@ -343,12 +344,21 @@ async def delete_project(
                     exc_info=True,
                 )
 
-    # Cascade order: browser_sessions → sessions → workspaces → project.
+    # Cascade order: browser_sessions → sessions → project_versions →
+    # workspaces → project.  ``project_versions`` keeps a FK to projects
+    # without ON DELETE CASCADE (publish history is a sibling of, not a
+    # subtree of, the project) — when the user has ever published, the
+    # row stays and blocks ``DELETE FROM projects`` with a 23503.  Drop
+    # versions explicitly here, mirroring the manual sessions /
+    # workspaces drops above.
     await session.execute(
         delete(BrowserSession).where(BrowserSession.project_id == project_id)
     )
     await session.execute(
         delete(SessionRow).where(SessionRow.project_id == project_id)
+    )
+    await session.execute(
+        delete(ProjectVersion).where(ProjectVersion.project_id == project_id)
     )
     await session.execute(
         delete(Workspace).where(Workspace.project_id == project_id)
