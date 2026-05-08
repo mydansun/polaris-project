@@ -43,6 +43,9 @@ _UTM = "utm_source=polaris&utm_medium=referral"
 
 
 def _auth_headers(settings: Settings) -> dict[str, str]:
+    from polaris_agent_core.replay_guard import check_network
+
+    check_network("unsplash")
     if not settings.unsplash_access_key:
         raise RuntimeError(
             "UNSPLASH_ACCESS_KEY not configured — refusing to call Unsplash"

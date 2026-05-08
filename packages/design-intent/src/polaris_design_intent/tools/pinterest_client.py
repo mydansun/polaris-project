@@ -33,6 +33,9 @@ class PinterestClient:
         timeout: float = 30.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
+        from polaris_agent_core.replay_guard import check_network
+
+        check_network("pinterest")
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout

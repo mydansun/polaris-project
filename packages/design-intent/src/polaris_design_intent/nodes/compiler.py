@@ -125,6 +125,9 @@ async def compiler_node(state: DesignIntentState, settings: Settings) -> dict[st
     # ``extra='forbid'`` configs and by typing every intent field as a
     # non-union primitive (str | None, Literal, list[str]).  This guarantees
     # ``brief`` is always present in the response.
+    from polaris_agent_core.replay_guard import check_network
+
+    check_network("openai")
     model = ChatOpenAI(
         model=settings.compiler_model,
         api_key=settings.openai_api_key,

@@ -168,6 +168,33 @@ async def run_worker(settings: Settings, once: bool = False) -> None:
             except Exception:  # noqa: BLE001
                 logger.exception("xack failed for %s", message_id)
 
+    # POLARIS_RECORD and POLARIS_REPLAY are mutually exclusive —
+    # recording from a replay would either silently produce an
+    # identity copy or write garbage if anything diverges.  Bail
+    # at startup so the operator notices.
+    from polaris_agent_core.replay_guard import assert_modes_not_both
+
+    assert_modes_not_both()
+
+    # Initialize the replay recorder (no-op unless POLARIS_RECORD is set).
+    # Fail-soft: a misconfigured POLARIS_RECORD must not block worker start.
+    try:
+        from polaris_worker.replay.bootstrap import init_from_env
+
+        init_from_env()
+    except Exception:  # noqa: BLE001
+        logger.exception("replay recorder bootstrap failed; continuing without it")
+
+    # Replay-mode banner for log readability.
+    import os
+
+    if os.environ.get("POLARIS_REPLAY"):
+        logger.warning(
+            "REPLAY MODE ACTIVE — codex sessions and design-intent runs will "
+            "satisfy from fixture %s; no real LLM calls will be made.",
+            os.environ["POLARIS_REPLAY"],
+        )
+
     try:
         await ensure_group(redis, settings.consumer_group)
         logger.info(

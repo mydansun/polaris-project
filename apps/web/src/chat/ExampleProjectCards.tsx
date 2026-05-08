@@ -42,6 +42,10 @@ export function ExampleProjectCards({
             type="button"
             disabled={disabled}
             onClick={() => onSelect(message)}
+            data-testid={`example-card-${ex.key}`}
+            data-semantic-kind="example_project_card"
+            data-example-key={ex.key}
+            aria-label={title}
             className={
               "group flex cursor-pointer flex-col overflow-hidden rounded-lg border " +
               "border-border-light bg-white text-left shadow-sm transition " +

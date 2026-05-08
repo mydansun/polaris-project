@@ -40,7 +40,7 @@ export function ChatInput({
   discoverLabel,
 }: ChatInputProps) {
   return (
-    <form onSubmit={onSubmit} className="w-full">
+    <form onSubmit={onSubmit} className="w-full" data-testid="chat-form">
       {/* Min height ≈ three text lines; auto-grows up to 240px then scrolls.
           Send/Stop button is absolutely positioned bottom-right so it stays
           anchored regardless of textarea height. */}
@@ -52,6 +52,9 @@ export function ChatInput({
           onKeyDown={onKeyDown}
           disabled={disabled}
           placeholder={placeholder}
+          data-testid="chat-input"
+          data-semantic-kind="chat_input"
+          aria-label={placeholder}
           className="block min-h-[72px] w-full resize-none bg-transparent text-sm leading-6 text-text-primary placeholder:text-text-muted focus-visible:outline-none disabled:opacity-60"
           style={{ maxHeight: 240, overflowY: "auto" }}
           onInput={(e) => {
@@ -78,6 +81,8 @@ export function ChatInput({
               size="sm"
               disabled={!canSend}
               onClick={onDiscover}
+              data-testid="chat-discover-button"
+              data-semantic-kind="chat_discover"
               className="h-8 rounded-full px-3 text-xs"
               title={discoverLabel ?? i18n.t("chat.discoverIntent")}
             >
@@ -92,6 +97,8 @@ export function ChatInput({
                 size="icon"
                 variant="destructive"
                 onClick={onStop}
+                data-testid="chat-stop-button"
+                data-semantic-kind="chat_stop"
                 className="h-8 w-8 rounded-full"
                 title="Stop current turn"
               >
@@ -107,6 +114,8 @@ export function ChatInput({
                 size="icon"
                 variant="outline"
                 disabled={!canSend}
+                data-testid="chat-send-button"
+                data-semantic-kind="chat_steer_send"
                 className="h-8 w-8 rounded-full"
                 title={i18n.t("chat.steerSend")}
               >
@@ -118,6 +127,8 @@ export function ChatInput({
               type="submit"
               size="icon"
               disabled={!canSend}
+              data-testid="chat-send-button"
+              data-semantic-kind="chat_send"
               className="h-8 w-8 rounded-full"
             >
               <span className="icon-[mdi--send] text-base" />

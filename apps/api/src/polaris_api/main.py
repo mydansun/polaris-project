@@ -23,6 +23,7 @@ from polaris_api.routes.codex_quota import router as codex_quota_router  # noqa:
 from polaris_api.routes.deploy import router as deploy_router  # noqa: E402
 from polaris_api.routes.dev_deps import router as dev_deps_router  # noqa: E402
 from polaris_api.routes.projects import router as projects_router  # noqa: E402
+from polaris_api.routes.replay import router as replay_router  # noqa: E402
 from polaris_api.routes.sessions import router as sessions_router  # noqa: E402
 from polaris_api.routes.unsplash import router as unsplash_router  # noqa: E402
 from polaris_api.routes.workspaces import router as workspaces_router  # noqa: E402
@@ -54,9 +55,24 @@ app.include_router(clarify_router)
 app.include_router(codex_quota_router)
 app.include_router(unsplash_router)
 app.include_router(audit_router)
+app.include_router(replay_router)
 # MCP over streamable HTTP.  Codex connects here via `mcp add --url
 # $POLARIS_API_URL/mcp --bearer-token-env-var POLARIS_WORKSPACE_TOKEN`.
 app.mount("/mcp", mcp_asgi)
+
+
+if os.environ.get("POLARIS_RECORD"):
+    # Just log a banner — the api process doesn't host the full
+    # JsonFileRecorder (worker does); api only needs to know the staging
+    # dir, which is derived per-request from the env var.  This banner
+    # makes it obvious in api logs that recording is active and which
+    # scenario is being captured.
+    _record_path = os.environ["POLARIS_RECORD"]
+    logging.getLogger(__name__).warning(
+        "REPLAY RECORDING ACTIVE on api: writing user-actions to staging "
+        "dir alongside %s",
+        _record_path,
+    )
 
 
 @app.get("/health", response_model=HealthResponse)

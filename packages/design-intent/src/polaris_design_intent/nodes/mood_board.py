@@ -156,6 +156,9 @@ async def mood_board_node(
     ref_file = ("reference.jpg", io.BytesIO(ref_bytes), ref_mime)
 
     try:
+        from polaris_agent_core.replay_guard import check_network
+
+        check_network("openai-images")
         client = AsyncOpenAI(api_key=settings.openai_api_key)
         logger.info(
             "mood_board: generating (model=%s, size=%s, ref_bytes=%d, prompt_chars=%d)",

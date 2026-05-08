@@ -151,6 +151,9 @@ export function LoginPage() {
                   variant="outline"
                   onClick={() => { window.location.href = getDevLoginUrl(); }}
                   className="w-full gap-2"
+                  data-testid="dev-login-button"
+                  data-semantic-kind="dev_login"
+                  aria-label={t("login.devLogin")}
                 >
                   <span className="icon-[mdi--login] text-xl" />
                   {t("login.devLogin")}

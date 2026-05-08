@@ -87,6 +87,9 @@ async def score_images_batched(
         queries,
     )
 
+    from polaris_agent_core.replay_guard import check_network
+
+    check_network("openai")
     model = ChatOpenAI(
         model=settings.scorer_model,
         api_key=settings.openai_api_key,

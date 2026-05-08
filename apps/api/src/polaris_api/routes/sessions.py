@@ -54,6 +54,45 @@ from polaris_api.services.run_quota import (
 
 router = APIRouter(tags=["sessions"])
 
+
+async def _build_clarification_snapshot_event(
+    db: DbSession, session_id: UUID
+) -> str | None:
+    """Snapshot any still-pending clarification for ``session_id``.
+
+    Returns the JSON payload of a synthetic ``clarification_requested``
+    SSE event, or None when no row is pending.  Used by the SSE route
+    to close the fire-and-forget pubsub race: a clarification
+    published between session-create and EventSource-connect would
+    otherwise be lost, leaving the chat stuck on "Polaris is working"
+    until the user reloads.
+
+    Real runs hide the race (LLM latency widens the gap to seconds)
+    but replay mode makes it instant and 100 % reproducible — that's
+    what surfaced this bug.
+    """
+    pending = (await db.execute(
+        select(Clarification)
+        .where(
+            Clarification.session_id == session_id,
+            Clarification.status == "pending",
+        )
+        .order_by(Clarification.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if pending is None:
+        return None
+    return json.dumps({
+        "session_id": str(session_id),
+        "run_id": str(pending.run_id),
+        "kind": "clarification_requested",
+        "request": {
+            "request_id": pending.request_id,
+            "questions": pending.questions_jsonb,
+            "source": pending.agent_kind,
+        },
+    })
+
 DEFAULT_MODE = "build_planned"
 
 
@@ -266,12 +305,18 @@ async def stream_session_events(
     session_row = await _load_user_session(db, session_id, user)
     channel = session_events_channel(session_row.id)
 
+    snapshot_event = await _build_clarification_snapshot_event(db, session_row.id)
+
     async def event_source():
         redis: Redis = get_redis()
         pubsub = redis.pubsub()
         await pubsub.subscribe(channel)
         try:
             yield f"event: ready\ndata: {json.dumps({'session_id': str(session_row.id)})}\n\n"
+            # Emit the snapshot AFTER ready so the frontend's
+            # applySessionEvent reducer sees a normal-shape event.
+            if snapshot_event is not None:
+                yield f"data: {snapshot_event}\n\n"
             while True:
                 if await request.is_disconnected():
                     return
@@ -352,6 +397,16 @@ async def interrupt_session(
                     "final_message": None,
                 }
             ),
+        )
+        # Release the quota slot synchronously here too — the worker's
+        # finally block does this when it observes the control channel
+        # interrupt, but stuck-task / orphaned-worker scenarios mean
+        # we can't rely on it.  Without an api-side release the slot
+        # leaks and the user starts seeing 429 on the next session.
+        # Idempotent — release_run_slot does ZREM, which no-ops on a
+        # member already removed by the worker.
+        await release_run_slot(
+            redis=redis2, user_id=user.id, session_id=session_row.id
         )
     finally:
         await redis2.aclose()

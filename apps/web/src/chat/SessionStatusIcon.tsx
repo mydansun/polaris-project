@@ -9,12 +9,21 @@ export type SessionUiStatus = SessionStatus | "idle";
  */
 export function SessionStatusIcon({ status }: { status: SessionUiStatus }) {
   const base = "flex h-6 w-6 items-center justify-center rounded-full";
+  // The data-testid carries `session-status-<status>` so replay tests
+  // can wait on a specific terminal state (`session-status-completed`,
+  // `session-status-failed`, etc.) without polling text.
+  const sharedAttrs = {
+    "data-testid": `session-status-${status}`,
+    "data-semantic-kind": "session_status_pill",
+    "data-status": status,
+  } as const;
   if (status === "running" || status === "queued") {
     return (
       <div
         className={`${base} bg-accent/10`}
         title={status === "running" ? "Running" : "Queued"}
         aria-label={status}
+        {...sharedAttrs}
       >
         <span className="relative flex h-2 w-2">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
@@ -29,6 +38,7 @@ export function SessionStatusIcon({ status }: { status: SessionUiStatus }) {
         className={`${base} bg-success-light`}
         title="Completed"
         aria-label="completed"
+        {...sharedAttrs}
       >
         <span className="icon-[mdi--check-circle] text-base text-success" />
       </div>
@@ -36,7 +46,12 @@ export function SessionStatusIcon({ status }: { status: SessionUiStatus }) {
   }
   if (status === "failed") {
     return (
-      <div className={`${base} bg-error-light`} title="Failed" aria-label="failed">
+      <div
+        className={`${base} bg-error-light`}
+        title="Failed"
+        aria-label="failed"
+        {...sharedAttrs}
+      >
         <span className="icon-[mdi--alert-circle] text-base text-error" />
       </div>
     );
@@ -47,6 +62,7 @@ export function SessionStatusIcon({ status }: { status: SessionUiStatus }) {
         className={`${base} bg-amber-50`}
         title="Interrupted"
         aria-label="interrupted"
+        {...sharedAttrs}
       >
         <span className="icon-[mdi--stop-circle] text-base text-amber-500" />
       </div>
@@ -54,7 +70,12 @@ export function SessionStatusIcon({ status }: { status: SessionUiStatus }) {
   }
   // idle — blank placeholder keeps the header layout stable.
   return (
-    <div className={`${base} text-text-muted`} title="Idle" aria-label="idle">
+    <div
+      className={`${base} text-text-muted`}
+      title="Idle"
+      aria-label="idle"
+      {...sharedAttrs}
+    >
       <span className="icon-[mdi--circle-outline] text-base" />
     </div>
   );

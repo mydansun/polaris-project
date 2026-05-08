@@ -93,6 +93,9 @@ export function CodexQuotaBar({ projectId }: Props) {
       className="flex items-center gap-1.5 text-xs text-text-muted"
       title={tooltip}
       aria-label={tooltip}
+      data-testid="codex-quota-bar"
+      data-semantic-kind="codex_quota_bar"
+      data-quota-percent={display}
     >
       <div className="h-1.5 w-12 overflow-hidden rounded-full bg-border-light/60">
         <div

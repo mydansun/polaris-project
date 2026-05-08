@@ -359,7 +359,12 @@ export function ChatPane({
         <div className="flex items-center gap-2">
           {!ready ? <Badge variant="destructive">{t("chat.apiOffline")}</Badge> : null}
           <SessionStatusIcon status={sessionStatus} />
-          <Avatar className="h-7 w-7 shrink-0">
+          <Avatar
+            className="h-7 w-7 shrink-0"
+            data-testid="user-avatar"
+            data-semantic-kind="user_avatar"
+            aria-label={user.name}
+          >
             {user.avatar_url !== null ? (
               <AvatarImage src={user.avatar_url} alt={user.name} />
             ) : null}
@@ -523,9 +528,14 @@ export function ChatPane({
                   />
                 )}
                 {pendingPlanApproval && !isInFlight && (
-                  <div className="flex justify-center py-4">
+                  <div className="flex justify-center py-4" data-testid="plan-approval-card">
                     <div className="running-border flex items-center gap-3 rounded-2xl px-6 py-4">
-                      <Button onClick={onProceedWithPlan} className="gap-2">
+                      <Button
+                        onClick={onProceedWithPlan}
+                        className="gap-2"
+                        data-testid="plan-approve-button"
+                        data-semantic-kind="plan_approve"
+                      >
                         <span className="icon-[mdi--play] text-base" />
                         {t("chat.proceed")}
                       </Button>

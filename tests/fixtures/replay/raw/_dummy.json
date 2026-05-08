@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "scenario": "_dummy",
+  "recorded_at": "2026-05-08T20:00:00Z",
+  "user_actions": [
+    {
+      "t": 0.0,
+      "kind": "navigate",
+      "concrete": {"path": "/"}
+    },
+    {
+      "t": 0.5,
+      "kind": "click",
+      "concrete": {
+        "selector": "[data-testid=dev-login-button]",
+        "viewport_xy": [240, 380],
+        "page_url": "/"
+      },
+      "a11y_snapshot": {
+        "target": {
+          "role": "button",
+          "name": "Dev Login",
+          "testid": "dev-login-button",
+          "semantic_kind": "dev_login"
+        },
+        "ancestors": [{"tag": "main", "name": "Login"}],
+        "siblings_text": []
+      }
+    }
+  ],
+  "agent_io": {
+    "codex_frames": [],
+    "design_intent_nodes": []
+  }
+}

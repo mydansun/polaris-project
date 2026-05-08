@@ -86,7 +86,15 @@ export function ClarificationCard({
   const progressPct = ((currentIndex + 1) / total) * 100;
 
   return (
-    <div className="running-border flex w-full max-w-2xl flex-col gap-4 rounded-2xl p-5">
+    <div
+      className="running-border flex w-full max-w-2xl flex-col gap-4 rounded-2xl p-5"
+      data-testid="clarification-card"
+      data-semantic-kind="clarification_card"
+      data-request-id={request.request_id}
+      data-question-id={q.id}
+      data-question-index={currentIndex}
+      data-question-total={total}
+    >
       {/* Progress header */}
       <div className="flex items-center gap-3 text-xs text-text-muted">
         <span className="shrink-0 tabular-nums">
@@ -103,6 +111,8 @@ export function ClarificationCard({
             type="button"
             onClick={goBack}
             disabled={disabled}
+            data-testid="clarification-back"
+            data-semantic-kind="clarification_back"
             className="flex shrink-0 cursor-pointer items-center gap-0.5 text-text-muted hover:text-text-primary disabled:opacity-50"
           >
             <span className="icon-[mdi--chevron-left] text-sm" />
@@ -118,7 +128,7 @@ export function ClarificationCard({
           <p className="text-xs text-text-muted">{q.description}</p>
         ) : null}
         <div className="flex flex-col gap-1.5">
-          {q.choices.map((c) => {
+          {q.choices.map((c, choiceIndex) => {
             const selected = currentAnswer?.selected_choice === c.id;
             return (
               <button
@@ -126,6 +136,13 @@ export function ClarificationCard({
                 type="button"
                 disabled={disabled}
                 onClick={() => setChoice(c.id)}
+                data-testid={`clarification-choice-${c.id}`}
+                data-semantic-kind="clarification_choice"
+                data-choice-id={c.id}
+                data-choice-index={choiceIndex}
+                data-choice-label={c.label}
+                aria-label={c.label}
+                aria-pressed={selected}
                 className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
                   selected
                     ? "border-accent bg-accent/10 text-text-primary"
@@ -157,6 +174,8 @@ export function ClarificationCard({
             value={currentAnswer?.override_text ?? ""}
             onChange={(e) => setOverride(e.target.value)}
             disabled={disabled}
+            data-testid="clarification-override"
+            data-semantic-kind="clarification_override_text"
             className="text-sm"
           />
         ) : null}
@@ -165,6 +184,8 @@ export function ClarificationCard({
       <Button
         onClick={advance}
         disabled={disabled || !canAdvance}
+        data-testid="clarification-advance"
+        data-semantic-kind={isLast ? "clarification_submit" : "clarification_next"}
         className="w-full"
       >
         {isLast ? t("clarification.continue") : t("clarification.next")}

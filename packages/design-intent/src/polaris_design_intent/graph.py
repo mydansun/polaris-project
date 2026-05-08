@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import logging
+from collections.abc import Awaitable, Callable
 from functools import partial
 from typing import Any
 
@@ -38,10 +40,40 @@ from polaris_design_intent.tools.user_input import UserInputFn
 logger = logging.getLogger(__name__)
 
 
+# Tap signature: (node_name, node_output) -> awaitable.  Fired AFTER each
+# node returns, with the dict the node added to graph state.  Used by the
+# replay recorder to capture node-level IO without tangling the graph
+# itself with recording concerns.  A tap exception must not break the
+# graph — wrappers swallow at the call site.
+NodeTap = Callable[[str, dict[str, Any]], Awaitable[None]]
+
+
+def _with_node_tap(name: str, fn: Any, tap: NodeTap | None) -> Any:
+    """Wrap a node callable so its output is forwarded to ``tap``.
+
+    Returns ``fn`` unchanged when ``tap`` is None — keeps the no-recording
+    path zero-cost.  Wrapped variant catches and logs tap failures so a
+    misbehaving recorder can never abort design-intent traversal.
+    """
+    if tap is None:
+        return fn
+
+    async def _wrapped(state: Any) -> Any:
+        result = await fn(state)
+        try:
+            await tap(name, result if isinstance(result, dict) else {"_value": result})
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("design-intent node tap failed at %s: %s", name, exc)
+        return result
+
+    return _wrapped
+
+
 def build_graph(
     settings: Settings | None = None,
     *,
     checkpointer: Any | None = None,
+    node_tap: NodeTap | None = None,
 ) -> Any:
     """Assemble the design-intent LangGraph.
 
@@ -65,17 +97,45 @@ def build_graph(
 
     graph = StateGraph(DesignIntentState)
 
-    graph.add_node("clarifier_step", partial(clarifier_step, settings=settings))
-    graph.add_node("clarifier_ask", partial(clarifier_ask, _settings=settings))
-    graph.add_node("palette_step", partial(palette_step, settings=settings))
-    graph.add_node("review_step", partial(review_node, settings=settings))
+    graph.add_node(
+        "clarifier_step",
+        _with_node_tap("clarifier_step", partial(clarifier_step, settings=settings), node_tap),
+    )
+    graph.add_node(
+        "clarifier_ask",
+        _with_node_tap("clarifier_ask", partial(clarifier_ask, _settings=settings), node_tap),
+    )
+    graph.add_node(
+        "palette_step",
+        _with_node_tap("palette_step", partial(palette_step, settings=settings), node_tap),
+    )
+    graph.add_node(
+        "review_step",
+        _with_node_tap("review_step", partial(review_node, settings=settings), node_tap),
+    )
     # Pinterest is split into two nodes so the chat can render the
     # gallery (built from blurred S3 thumbs) while the batched scorer
     # still grinds — see ``nodes/pinterest.py`` for the rationale.
-    graph.add_node("pinterest_search", partial(pinterest_search_node, settings=settings))
-    graph.add_node("pinterest_score", partial(pinterest_score_node, settings=settings))
-    graph.add_node("compiler", partial(compiler_node, settings=settings))
-    graph.add_node("mood_board_step", partial(mood_board_node, settings=settings))
+    graph.add_node(
+        "pinterest_search",
+        _with_node_tap(
+            "pinterest_search", partial(pinterest_search_node, settings=settings), node_tap
+        ),
+    )
+    graph.add_node(
+        "pinterest_score",
+        _with_node_tap(
+            "pinterest_score", partial(pinterest_score_node, settings=settings), node_tap
+        ),
+    )
+    graph.add_node(
+        "compiler",
+        _with_node_tap("compiler", partial(compiler_node, settings=settings), node_tap),
+    )
+    graph.add_node(
+        "mood_board_step",
+        _with_node_tap("mood_board_step", partial(mood_board_node, settings=settings), node_tap),
+    )
 
     graph.add_edge(START, "clarifier_step")
     graph.add_conditional_edges(
@@ -133,6 +193,7 @@ async def run_design_intent(
     settings: Settings | None = None,
     checkpointer: Any | None = None,
     callbacks: list[Any] | None = None,
+    node_tap: NodeTap | None = None,
 ) -> CompiledBrief:
     """Main entry point invoked by the worker.
 
@@ -144,9 +205,13 @@ async def run_design_intent(
     side to observe per-node transitions (discovery:clarifying / pinterest /
     compiled) in real time instead of receiving them batched after the graph
     finishes.
+
+    ``node_tap`` — optional record/replay hook fired with each node's
+    output dict.  The replay recorder uses this to capture design-intent
+    IO without entangling its concerns with the graph's normal operation.
     """
     settings = settings or get_settings()
-    graph = build_graph(settings, checkpointer=checkpointer)
+    graph = build_graph(settings, checkpointer=checkpointer, node_tap=node_tap)
     config: dict[str, Any] = {
         "configurable": {"thread_id": f"design_intent:{turn_id}"},
         "callbacks": callbacks or [],

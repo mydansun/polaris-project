@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "scenario": "_dummy",
+  "raw_hash": "e236815399b9e3a5bfa61ae9d8d5cc603dea2354825a61e9bfdcd5af65cf966d",
+  "narrative": [
+    "Smallest possible scenario: log in via dev-login.",
+    "No project gets created, no agents run.",
+    "Used by the schema integrity tests to keep the validator alive in CI."
+  ],
+  "key_invariants": [
+    "Exactly two user actions land in the timeline",
+    "First action navigates to '/' (the home page)",
+    "Second action targets the dev-login button"
+  ],
+  "actions": [
+    {
+      "t": 0.0,
+      "kind": "navigate",
+      "concrete": {"path": "/"},
+      "intent": "Open the home page to begin a recording session"
+    },
+    {
+      "t": 0.5,
+      "kind": "click",
+      "concrete": {
+        "selector": "[data-testid=dev-login-button]",
+        "viewport_xy": [240, 380],
+        "page_url": "/"
+      },
+      "semantic": {
+        "target_kind": "dev_login",
+        "target_label": "Dev Login",
+        "element_role": "button",
+        "container": "Login"
+      },
+      "intent": "Log in via the dev-login shortcut so a recording session starts authenticated",
+      "rationale": "录制场景需要先登录,使用 dev-login 直登避免邮件验证流程"
+    }
+  ]
+}

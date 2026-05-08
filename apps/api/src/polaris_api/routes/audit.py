@@ -54,6 +54,9 @@ async def _call_openai_chat(
             {"role": "user", "content": user},
         ],
     }
+    from polaris_agent_core.replay_guard import check_network
+
+    check_network("openai")
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(_OPENAI_CHAT_URL, json=payload, headers=headers)

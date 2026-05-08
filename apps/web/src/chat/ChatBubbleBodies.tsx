@@ -204,8 +204,13 @@ export function PlanBody({ payload }: { payload: Record<string, unknown> }) {
   // No overview available → plain card, single body, no tabs.
   if (plain === null) {
     return (
-      <div className={card}>
-        <div className={body}>
+      <div
+        className={card}
+        data-testid="plan-card"
+        data-semantic-kind="plan_card"
+        data-plan-tabs="false"
+      >
+        <div className={body} data-testid="plan-body-tech">
           <Suspense fallback={<div className={fallback}>{tech!}</div>}>
             <MarkdownMessage text={tech!} />
           </Suspense>
@@ -216,15 +221,30 @@ export function PlanBody({ payload }: { payload: Record<string, unknown> }) {
 
   // Both available → tab header + swappable body.
   return (
-    <div className={card}>
+    <div
+      className={card}
+      data-testid="plan-card"
+      data-semantic-kind="plan_card"
+      data-plan-tabs="true"
+    >
       <Tabs defaultValue="plain">
         <div className="flex items-center justify-end border-b border-border-light bg-white px-3 py-1.5">
           <TabsList className="h-8">
-            <TabsTrigger value="plain" className="px-3 py-1 text-xs">
+            <TabsTrigger
+              value="plain"
+              className="px-3 py-1 text-xs"
+              data-testid="plan-tab-plain"
+              data-semantic-kind="plan_tab_brief"
+            >
               <span className="icon-[mdi--book-open-page-variant-outline] mr-1.5 text-sm" />
               {t("items.planTabs.plain")}
             </TabsTrigger>
-            <TabsTrigger value="tech" className="px-3 py-1 text-xs">
+            <TabsTrigger
+              value="tech"
+              className="px-3 py-1 text-xs"
+              data-testid="plan-tab-tech"
+              data-semantic-kind="plan_tab_detailed"
+            >
               <span className="icon-[mdi--code-braces] mr-1.5 text-sm" />
               {t("items.planTabs.technical")}
             </TabsTrigger>
@@ -250,7 +270,11 @@ export function MoodBoardBody({ payload }: { payload: Record<string, unknown> })
   const url = readString(payload.mood_board_url);
   if (!url) return null;
   return (
-    <div className="mt-2 w-full max-w-md overflow-hidden rounded-xl border border-border-light bg-surface-subtle">
+    <div
+      className="mt-2 w-full max-w-md overflow-hidden rounded-xl border border-border-light bg-surface-subtle"
+      data-testid="mood-board-card"
+      data-semantic-kind="mood_board"
+    >
       <div className="flex items-center gap-1.5 border-b border-border-light bg-white px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-text-muted">
         <span className="icon-[mdi--palette-outline] text-sm" />
         {t("items.moodBoard")}
@@ -267,6 +291,7 @@ export function MoodBoardBody({ payload }: { payload: Record<string, unknown> })
             alt={t("items.moodBoard")}
             loading="lazy"
             className="block h-auto w-full"
+            data-testid="mood-board-img"
           />
         </a>
       </div>

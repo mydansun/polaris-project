@@ -327,6 +327,21 @@ async def delete_project(
                 ws.id,
                 exc_info=True,
             )
+        # rm -rf the workspace bind-mount dir on disk too — leaving it
+        # around lets the next project creation collide on slug-derived
+        # path (initialize_workspace refuses non-empty dirs by design),
+        # producing a hard-to-diagnose 500 on POST /projects.  Best-
+        # effort: filesystem cleanup must not block the DB row drop.
+        if ws.repo_path:
+            try:
+                import shutil
+
+                shutil.rmtree(ws.repo_path, ignore_errors=True)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "delete_project: rmtree(%s) failed", ws.repo_path,
+                    exc_info=True,
+                )
 
     # Cascade order: browser_sessions → sessions → workspaces → project.
     await session.execute(

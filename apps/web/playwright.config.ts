@@ -23,6 +23,17 @@ export default defineConfig({
     baseURL: process.env.POLARIS_E2E_BASE_URL ?? "https://polaris-dev.xyz",
     trace: "on-first-retry",
     ignoreHTTPSErrors: false,                   // we have a real LE cert
+    // Chrome throttles backgrounded renderers + pauses timers / SSE
+    // delivery in occluded tabs.  Replay tests block on SSE
+    // clarification frames; without these flags a slow CI runner can
+    // stall the EventSource just long enough to time out.
+    launchOptions: {
+      args: [
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+      ],
+    },
   },
   projects: [
     {

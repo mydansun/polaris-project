@@ -95,6 +95,9 @@ async def review_node(
             reasons="emit_design_intent produced no usable content for the five required fields.",
         )
 
+    from polaris_agent_core.replay_guard import check_network
+
+    check_network("openai")
     model = ChatOpenAI(
         model=settings.review_model,
         api_key=settings.openai_api_key,

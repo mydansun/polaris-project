@@ -355,7 +355,39 @@ class DiscoveryAgent(Agent):
 
         progress = _DiscoveryProgressHandler(sink, log)
 
+        # Replay tap: every design-intent node forwards its output dict
+        # to the recorder.  Resolved at run time (not module load) so a
+        # late-installed JsonFileRecorder is picked up.  Noop when no
+        # recording is active.
+        from polaris_worker.replay import get_recorder
+
+        async def _node_tap(node_name: str, output: dict[str, Any]) -> None:
+            await get_recorder().on_design_intent_node(node_name, output)
+
         async def _invoke() -> CompiledBrief:
+            # Replay-mode short-circuit: when POLARIS_REPLAY is set,
+            # the design-intent flow is satisfied from the fixture
+            # instead of the live LangGraph + LLM.  The replay runner
+            # walks the recorded design_intent_nodes, drives
+            # user_input_fn at each clarifier_ask interrupt (so the
+            # frontend renders the same clarification cards), fires
+            # progress callbacks per node, and reconstructs the
+            # CompiledBrief from the recorded compiler output.
+            import os
+
+            replay_path = os.environ.get("POLARIS_REPLAY")
+            if replay_path:
+                from pathlib import Path
+
+                from polaris_design_intent.replay_runner import (
+                    replay_run_design_intent,
+                )
+
+                return await replay_run_design_intent(
+                    fixture_path=Path(replay_path),
+                    user_input_fn=run.user_input_fn,
+                    callbacks=[progress],
+                )
             return await run_design_intent(
                 project_id=str(session.project_id),
                 turn_id=str(run.run_id),  # LangGraph thread_id — just needs uniqueness
@@ -363,6 +395,7 @@ class DiscoveryAgent(Agent):
                 seed_intent=seed_intent,
                 user_input_fn=run.user_input_fn,
                 callbacks=[progress],
+                node_tap=_node_tap,
             )
 
         self._active_task = asyncio.create_task(_invoke())

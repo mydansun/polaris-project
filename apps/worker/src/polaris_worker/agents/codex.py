@@ -149,6 +149,17 @@ async def _translate_plan_to_plain(
     failure (caller falls back to technical-only rendering)."""
     if not text or not text.strip():
         return None
+    # Replay-mode short-circuit: the recorder captured the codex plan
+    # frame *before* the worker translates it, so no recorded text_plain
+    # is available.  Returning None drops us into the frontend's tech-
+    # only PlanBody render — fine for v1 replay.  The right long-term
+    # fix is to capture the post-translation state at recording time,
+    # but that's a recorder change pending Phase 3.7.
+    import os
+
+    if os.environ.get("POLARIS_REPLAY"):
+        log.info("plan translation skipped — replay mode")
+        return None
     api_key = getattr(settings, "openai_api_key", "") or ""
     model_name = getattr(settings, "codex_plan_plain_model", "") or ""
     if not api_key or not model_name:
@@ -159,7 +170,9 @@ async def _translate_plan_to_plain(
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
         from langchain_openai import ChatOpenAI
+        from polaris_agent_core.replay_guard import check_network
 
+        check_network("openai")
         log.info("plan: translating to plain (chars=%d, model=%s)", len(text), model_name)
         model = ChatOpenAI(
             model=model_name,
@@ -389,6 +402,56 @@ async def _resolve_container_ip(
 async def _get_or_open_session(
     workspace_id: UUID, settings: Any
 ) -> PolarisCodexSession:
+    # Replay-mode short-circuit: when POLARIS_REPLAY is set, every
+    # workspace gets a ReplayCodexSession reading from the same fixture.
+    # No real WS, no codex container required for the session itself
+    # (the workspace container still runs so the IDE iframe + file
+    # writes have somewhere to land; codex inside it just goes unused).
+    import os
+
+    replay_path = os.environ.get("POLARIS_REPLAY")
+    if replay_path:
+        async with _session_lock(workspace_id):
+            existing = _sessions.get(workspace_id)
+            if existing is not None and existing.is_alive():
+                return existing
+            from pathlib import Path
+
+            from polaris_agent_core.replay_codex_session import (
+                ReplayCodexSession,
+            )
+            from polaris_worker.replay.workspace_seeder import (
+                seed_workspace_from_fixture,
+            )
+
+            # Seed /workspace with the recording's post-build tarball
+            # so the IDE iframe + browser preview see the same file
+            # tree the live recording produced.  Idempotent across
+            # multiple session opens for the same workspace_id.
+            await seed_workspace_from_fixture(workspace_id, Path(replay_path))
+
+            config = PolarisAgentConfig(
+                ws_url="replay://",
+                cwd=WORKSPACE_CONTAINER_CWD,
+                base_instructions=POLARIS_AGENT_BASE_INSTRUCTIONS,
+                dynamic_tools=[SET_PROJECT_ROOT_TOOL, FOCUS_BROWSER_TOOL],
+                dynamic_tool_handler=None,
+                user_input_handler=None,
+                model=settings.codex_model,
+                approval_policy=settings.codex_approval_policy,
+                turn_timeout_seconds=settings.codex_turn_timeout_seconds,
+                liveness_check_interval_seconds=settings.codex_liveness_check_interval_seconds,
+            )
+            session = ReplayCodexSession(config, fixture_path=Path(replay_path))
+            await session.start()
+            _sessions[workspace_id] = session  # type: ignore[assignment]
+            logger.info(
+                "opened replay codex session for workspace %s from %s",
+                workspace_id,
+                replay_path,
+            )
+            return session  # type: ignore[return-value]
+
     async with _session_lock(workspace_id):
         ip = await _resolve_container_ip(workspace_id)
         ws_url = f"ws://{ip}:{CODEX_APP_SERVER_PORT}/"
@@ -409,6 +472,18 @@ async def _get_or_open_session(
             )
             await _drop_session(workspace_id)
 
+        # Replay tap: every JSON-RPC frame in/out of this codex session
+        # gets forwarded to the recorder.  Resolved at session-open time
+        # (not at run time) because the JsonRpc client wires the tap on
+        # connect — fine since the recorder singleton is installed
+        # synchronously by the worker bootstrap, well before any session
+        # opens.  Captured via a closure so a recorder swap (tests) is
+        # picked up.
+        from polaris_worker.replay import get_recorder
+
+        async def _codex_tap(direction: str, frame: dict[str, Any]) -> None:
+            await get_recorder().on_codex_frame(direction, frame)
+
         config = PolarisAgentConfig(
             ws_url=ws_url,
             cwd=WORKSPACE_CONTAINER_CWD,
@@ -422,6 +497,7 @@ async def _get_or_open_session(
             approval_policy=settings.codex_approval_policy,
             turn_timeout_seconds=settings.codex_turn_timeout_seconds,
             liveness_check_interval_seconds=settings.codex_liveness_check_interval_seconds,
+            event_tap=_codex_tap,
         )
         session = PolarisCodexSession(config)
         await session.start()
@@ -863,6 +939,22 @@ class _CodexTurnSink:
                 self._final_message = text
         if kind == "codex:file_change":
             await self._maybe_infer_project_root(payload)
+            # In live runs the StatusBar file counter is fed by the
+            # inotify watcher observing actual fs activity inside the
+            # workspace container.  Replay mode seeds /workspace once
+            # at session open and fires no per-event writes — inotify
+            # sees nothing, so the counter would stay at 0.
+            # Compensate by counting changes reported on the codex
+            # event itself.  Gated on POLARIS_REPLAY to avoid
+            # double-counting in live runs.
+            import os
+
+            if os.environ.get("POLARIS_REPLAY"):
+                changes = payload.get("changes")
+                if isinstance(changes, list):
+                    n = sum(1 for c in changes if isinstance(c, dict) and c.get("path"))
+                    if n > 0:
+                        await self._sink.bump_file_delta(n)
         # StatusBar counter: playwright MCP calls.  We count completions
         # (one tick per finished tool call), regardless of whether the
         # call succeeded — failed browser_click / timeout still

@@ -11,6 +11,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
+from polaris_agent_core.replay_guard import check_network
 from polaris_design_intent.config import Settings
 from polaris_design_intent.prompts.clarifier_system import CLARIFIER_SYSTEM_PROMPT
 from polaris_design_intent.state import DesignIntentState
@@ -159,6 +160,7 @@ def _build_model(settings: Settings) -> Any:
     # model sometimes returns natural-language prose (especially on review
     # bounce-backs), which lands in ROUTE_LOOP and re-fires the LLM on
     # the same growing context until LangGraph's recursion cap kicks in.
+    check_network("openai")
     return ChatOpenAI(
         model=settings.clarifier_model,
         api_key=settings.openai_api_key,
@@ -460,6 +462,7 @@ async def palette_step(state: DesignIntentState, settings: Settings) -> dict[str
         args.get("language"),
     )
 
+    check_network("openai")
     model = ChatOpenAI(
         model=settings.compiler_model,
         api_key=settings.openai_api_key,

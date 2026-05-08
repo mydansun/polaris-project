@@ -91,6 +91,7 @@ class _JsonRpcWebSocketClient:
         server_request_handler: ServerRequestHandler | None = None,
         *,
         open_timeout: float = 30.0,
+        event_tap: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self._ws_url = ws_url
         self._server_request_handler = server_request_handler
@@ -101,6 +102,12 @@ class _JsonRpcWebSocketClient:
         self._notifications: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._next_id = 1
         self._recent_errors: deque[str] = deque(maxlen=50)
+        # Optional record/replay tap.  Called for every JSON-RPC frame
+        # seen on this connection — outgoing requests/notifications
+        # AND incoming notifications/responses.  Must be cheap and must
+        # never raise; we wrap calls in suppress() at the call site so a
+        # broken recorder can't take down a live turn.
+        self._event_tap = event_tap
 
     @property
     def last_errors(self) -> str | None:
@@ -182,6 +189,7 @@ class _JsonRpcWebSocketClient:
         if params is not None:
             message["params"] = params
         await self._ws.send(json.dumps(message))
+        await self._emit_tap("out", message)
         response = await future
         if "error" in response:
             error = response["error"]
@@ -197,6 +205,27 @@ class _JsonRpcWebSocketClient:
         if params is not None:
             message["params"] = params
         await self._ws.send(json.dumps(message))
+        await self._emit_tap("out", message)
+
+    async def _emit_tap(self, direction: str, frame: dict[str, Any]) -> None:
+        """Forward a frame to the optional record/replay tap.
+
+        ``direction`` is ``"in"`` for frames received from codex, ``"out"``
+        for frames we sent.  A buggy or slow recorder must not break the
+        live turn, so any exception is swallowed and logged at debug
+        level.  Caller has already serialized the frame onto the wire
+        (or pulled it off), so the tap sees ground truth.
+        """
+        if self._event_tap is None:
+            return
+        try:
+            await self._event_tap(direction, frame)
+        except Exception:
+            # Best-effort: any recorder hiccup would otherwise propagate
+            # into the worker's main turn loop.  We deliberately do NOT
+            # store this in _recent_errors — recorder issues are not
+            # codex-protocol issues and would muddy the diagnostic.
+            pass
 
     async def next_notification(self) -> dict[str, Any]:
         return await self._notifications.get()
@@ -213,6 +242,9 @@ class _JsonRpcWebSocketClient:
                     continue
                 if not isinstance(message, dict):
                     continue
+                # Tap every well-formed inbound frame before dispatch —
+                # response, notification, or server-side request.
+                await self._emit_tap("in", message)
                 mid = message.get("id")
                 if mid is not None and "method" in message:
                     await self._handle_server_request(mid, message)
@@ -322,6 +354,16 @@ class PolarisAgentConfig:
     # interval only controls how quickly we *notice* a dead connection
     # and raise ConnectionLostError.
     liveness_check_interval_seconds: float = 30
+    # Optional tap that fires on every JSON-RPC frame received from
+    # codex (notification or server-side request) and on every frame
+    # we send (request or notification).  Used by the replay recorder
+    # to capture a full transcript without entangling its concerns
+    # with the session's normal operation — recorder failures must
+    # NOT affect the live turn, so the call site swallows exceptions.
+    #
+    # Direction is the literal string "in" (server → us) or "out"
+    # (us → server); ``frame`` is the parsed JSON dict.
+    event_tap: Callable[[str, dict[str, Any]], Awaitable[None]] | None = None
 
 
 class TurnItemSink(Protocol):
@@ -366,6 +408,7 @@ class PolarisCodexSession:
         self._client = _JsonRpcWebSocketClient(
             ws_url=self._config.ws_url,
             server_request_handler=self._handle_server_request,
+            event_tap=self._config.event_tap,
         )
         await self._client.start()
         await self._client.request(
