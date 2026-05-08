@@ -1,5 +1,7 @@
 # 录像回放 Fixture
 
+> [English version](./README.md)
+
 回放测试套件用的 fixture。`ReplayCodexSession` 和
 `ReplayDesignIntentRunner` 从这里读数据,让 worker 不调用
 OpenAI / Pinterest / image-gen 就能走完一遍录制好的场景。

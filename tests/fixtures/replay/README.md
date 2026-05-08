@@ -1,5 +1,7 @@
 # Replay fixtures
 
+> [中文版本](./README.zh.md)
+
 Fixtures used by the replay-test harness (`feat/replay-test-harness`).
 They drive `ReplayCodexSession` and `ReplayDesignIntentRunner` so the
 worker can satisfy a recorded scenario without hitting OpenAI /
