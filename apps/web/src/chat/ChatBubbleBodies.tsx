@@ -302,7 +302,6 @@ export function MoodBoardBody({ payload }: { payload: Record<string, unknown> })
 
 type ReferencesRef = {
   id: string;
-  title: string;
   blurred_url: string;
   score?: number | null;
   score_reason?: string | null;
@@ -331,7 +330,6 @@ export function ReferencesBody({ payload }: { payload: Record<string, unknown> }
       if (id === null || url === null) return null;
       return {
         id,
-        title: readString(o.title) ?? "",
         blurred_url: url,
         score: typeof o.score === "number" ? o.score : null,
         score_reason: readString(o.score_reason),
@@ -380,7 +378,11 @@ export function ReferencesBody({ payload }: { payload: Record<string, unknown> }
           return (
             <div
               key={ref.id}
-              title={ref.score_reason ?? ref.title}
+              // No fallback to ref.title — Pinterest pin titles are
+              // sensitive copy and would surface as a native HTML
+              // tooltip on hover.  score_reason is the model's
+              // rationale and safe to expose.
+              title={ref.score_reason ?? undefined}
               className={cn(
                 "relative aspect-[4/3] overflow-hidden rounded-md border border-border-light bg-white",
                 "enter-stagger",

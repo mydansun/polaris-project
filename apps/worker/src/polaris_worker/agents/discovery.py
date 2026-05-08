@@ -189,10 +189,14 @@ class _DiscoveryProgressHandler(AsyncCallbackHandler):
                 external_id="discovery:references",
                 payload={
                     "phase": "scored",
+                    # Don't leak Pinterest pin titles to the frontend —
+                    # they're sensitive copy and end up in HTML
+                    # ``title=`` tooltips that the user can read.
+                    # ``score_reason`` is the model's rationale for the
+                    # pick, not user-private; surface that instead.
                     "refs": [
                         {
                             "id": r.get("id"),
-                            "title": r.get("title") or "",
                             "blurred_url": r.get("blurred_url"),
                             "score": r.get("score"),
                             "score_reason": r.get("score_reason"),
@@ -230,7 +234,6 @@ class _DiscoveryProgressHandler(AsyncCallbackHandler):
                         "refs": [
                             {
                                 "id": r.get("id"),
-                                "title": r.get("title") or "",
                                 "blurred_url": r.get("blurred_url"),
                             }
                             for r in refs_raw
