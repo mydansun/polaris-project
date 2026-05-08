@@ -48,3 +48,19 @@ playwright/.cache/
 # bug repros, design references).  Real frontend assets live under
 # `apps/web/public/` — those PNGs are not affected.
 /*.png
+
+# Replay recordings — kept local-only.  Real fixtures carry the dev
+# stack's docker-internal IPs, plan-type metadata, and the URLs of
+# our internal Pinterest proxy in pinterest_refs[].max/.normal.  None
+# of it is a credential, but ship discipline says don't commit infra
+# coordinates if we don't have to.  Operators record locally; CI
+# replay tests skip when the fixture is absent.
+#
+# The ``_dummy`` pair stays in git — it's hand-crafted, contains no
+# real-stack data, and keeps the schema validator alive on a fresh
+# clone.
+tests/fixtures/replay/raw/*.json
+tests/fixtures/replay/raw/*.json.gz
+tests/fixtures/replay/assets/*
+!tests/fixtures/replay/raw/_dummy.json
+!tests/fixtures/replay/assets/.gitkeep
