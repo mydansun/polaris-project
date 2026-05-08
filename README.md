@@ -22,6 +22,12 @@ Open `https://${POLARIS_DOMAIN}` (default suggestion: `polaris-dev.xyz`).
 First-time sign-in requires an invite code (set via the wizard); on dev
 hosts you can click **Dev Login** to skip email verification.
 
+> **Note on `polaris-dev.xyz`** — the authoritative DNS for this zone
+> already resolves to LAN addresses on the maintainer's network, so
+> developers on the same LAN can use it as-is without registering or
+> configuring DNS.  Off-LAN deploys must use a domain you control on
+> Cloudflare DNS (Traefik's DNS-01 ACME walks against your zone).
+
 Each mode owns its own `.env.<mode>` and `compose.<mode>.yaml` and runs
 under its own compose project name (`polaris` vs `polaris-stage`), with
 independent named volumes — the two stacks coexist on one host without
@@ -33,7 +39,7 @@ clobbering each other's state.
 |------|---------|
 | **Docker** (Engine or Desktop) | Everything runs in containers; `up.py` enforces this |
 | **uv** ≥ 0.11 | Resolves the inline-deps PEP 723 metadata in `scripts/*.py` |
-| **A real domain on Cloudflare DNS** | TLS via ACME DNS-01; no localhost / self-signed mode |
+| **A domain on Cloudflare DNS** | TLS via ACME DNS-01; no localhost / self-signed mode.  On-LAN devs can borrow `polaris-dev.xyz` (DNS already pointing at the LAN); other deploys need a zone you own. |
 | **Codex CLI** + `codex login` | Persists Codex auth.json on host; mounted into workspaces |
 
 No system Python venv. No system pnpm. No system Make. Editing api /
@@ -164,16 +170,18 @@ scripts/
   build.py / up.py / down.py    The three CLIs above
   lib/                          Validators, env io, wizard, paths, docker_ops
   tests/                        pytest suite (uv run --group dev pytest)
-compose.dev.yaml   Single-file dev stack (deliberately not auto-discovered)
+compose.dev.yaml   Dev stack (Vite HMR + uvicorn --reload + bind-mounted source)
+compose.stage.yaml Stage stack (nginx-served bundle, no --reload, project name polaris-stage)
 ```
 
 ## Documentation
 
+- [README · 中文](./README.zh.md)
 - [Development](./docs/DEVELOPMENT.md) · [中文](./docs/DEVELOPMENT.zh.md)
 - [Staging](./docs/STAGING.md) · [中文](./docs/STAGING.zh.md)
-- [Architecture](./docs/ARCHITECTURE.md)
-- [API Reference](./docs/API.md)
-- [Configuration](./docs/CONFIGURATION.md)
-- [Frontend](./docs/FRONTEND.md)
-- [Roadmap](./docs/ROADMAP.md)
-- [Testing](./docs/TESTING.md)
+- [Architecture](./docs/ARCHITECTURE.md) · [中文](./docs/ARCHITECTURE.zh.md)
+- [API Reference](./docs/API.md) · [中文](./docs/API.zh.md)
+- [Configuration](./docs/CONFIGURATION.md) · [中文](./docs/CONFIGURATION.zh.md)
+- [Frontend](./docs/FRONTEND.md) · [中文](./docs/FRONTEND.zh.md)
+- [Roadmap](./docs/ROADMAP.md) · [中文](./docs/ROADMAP.zh.md)
+- [Testing](./docs/TESTING.md) · [中文](./docs/TESTING.zh.md)

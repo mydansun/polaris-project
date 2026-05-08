@@ -138,13 +138,19 @@ docker compose -f compose.dev.yaml restart web   # vite 重读 vite.config.ts
 Polaris 不带自签 / `localhost` 模式。Traefik 走 Cloudflare 的
 DNS-01 ACME,所以:
 
-1. 选一个属于你、托在 Cloudflare DNS 上的域名。
+1. 选一个 Cloudflare DNS 上的域名。
 2. 在 `.env.dev` 里写 `POLARIS_DOMAIN`。
 3. 向导会校验 `CF_API_TOKEN`(DNS-write 权限),栈拉起后 Traefik
    自己签发并自动续期通配证书。
 4. 打开 `https://${POLARIS_DOMAIN}/`(平台根)、
    `https://vnc.${POLARIS_DOMAIN}/`(dev VNC)、
    `https://ide-<hash>.${POLARIS_DOMAIN}/`(每会话 IDE)等。
+
+> **`polaris-dev.xyz` 直接用** —— 维护者持有的 `polaris-dev.xyz` zone
+> 的权威 DNS 已经解析到局域网 IP,所以**同一 LAN 内的开发者可以保留
+> `POLARIS_DOMAIN=polaris-dev.xyz` 不动**,跳过"注册域名 + 配 CF
+> token"那一步。Traefik 仍然对该 zone 的公网 DNS 记录走 Let's
+> Encrypt 签发真实证书,HTTPS 照常工作。
 
 `prod.${POLARIS_DOMAIN}` 和 `*.prod.${POLARIS_DOMAIN}` 走单独的发布
 平面证书;`*.s3.${POLARIS_DOMAIN}` 给 MinIO virtual-host bucket

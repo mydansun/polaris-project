@@ -148,7 +148,7 @@ changes.
 Polaris doesn't ship a self-signed / `localhost` mode.  Traefik does
 DNS-01 ACME against Cloudflare, so:
 
-1. Pick a domain you own that's on Cloudflare DNS.
+1. Pick a domain on Cloudflare DNS.
 2. Set `POLARIS_DOMAIN` in `.env.dev`.
 3. The wizard validates your `CF_API_TOKEN` (DNS-write scope) before
    bringing the stack up; Traefik then issues + renews wildcards
@@ -156,6 +156,13 @@ DNS-01 ACME against Cloudflare, so:
 4. Open `https://${POLARIS_DOMAIN}/` (apex), `https://vnc.${POLARIS_DOMAIN}/`
    (dev VNC), `https://ide-<hash>.${POLARIS_DOMAIN}/` (per-workspace
    IDE), etc.
+
+> **`polaris-dev.xyz` shortcut** — the maintainer's `polaris-dev.xyz`
+> zone already authoritatively resolves to LAN addresses, so devs on
+> the same LAN can leave `POLARIS_DOMAIN=polaris-dev.xyz` as-is and
+> skip the "register a domain + CF token" step.  Traefik still
+> issues real Let's Encrypt certs against the public-DNS records,
+> so HTTPS keeps working.
 
 A separate cert pair covers `prod.${POLARIS_DOMAIN}` and
 `*.prod.${POLARIS_DOMAIN}` for the publish plane, and a third covers
