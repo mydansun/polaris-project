@@ -108,6 +108,33 @@ services:
       - "traefik.http.routers.minio.tls.domains[0].sans=*.s3.${POLARIS_DOMAIN}"
       - "traefik.http.services.minio.loadbalancer.server.port=9000"
 
+  # One-shot MinIO initializer.  Creates the `${S3_BUCKET}` bucket and
+  # marks the `static/*` prefix anonymously readable (matches the .env
+  # comment + S3_URL_BASE expectation that tile/static URLs are public).
+  # Both ops are idempotent — safe to re-run on every `up.py dev`.
+  # api / worker `depends_on` this completing so a fresh deploy never
+  # races a NoSuchBucket against the first design-intent run.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY"
+        mc mb --ignore-existing "local/$$S3_BUCKET"
+        mc anonymous set download "local/$$S3_BUCKET/static"
+    networks:
+      - polaris-shared
+    restart: "no"
+
   traefik:
     image: traefik:v3.6
     restart: unless-stopped
@@ -186,6 +213,8 @@ services:
       redis:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      minio-init:
         condition: service_completed_successfully
     environment:
       # Datastore URLs default to 127.0.0.1 in pydantic Settings — that
