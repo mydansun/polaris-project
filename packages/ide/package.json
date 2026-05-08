@@ -14,13 +14,15 @@
           "workbench.colorTheme": "Default Light Modern",
           "explorer.autoReveal": true
         },
-        "reloadOnReconnect": true
+        "reloadOnReconnect": true,
+        "warnOnPotentiallyInsecureHostPattern": false
       }
     },
     "backend": {
       "config": {
         "startupTimeout": -1,
-        "resolveSystemPlugins": false
+        "resolveSystemPlugins": false,
+        "warnOnPotentiallyInsecureHostPattern": false
       }
     }
   },
