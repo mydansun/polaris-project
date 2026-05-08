@@ -52,8 +52,9 @@ async def isolated_quota(monkeypatch, redis_client):
 def _settings(global_limit: int, user_limit: int, ttl: int = 1800) -> Settings:
     # Settings reads its fields from env; constructing directly bypasses
     # that and just sets attributes.  BaseSettings still requires a valid
-    # call so we build one and overwrite the knobs we care about.
-    s = Settings()
+    # call so we build one with POLARIS_DOMAIN (the one required field
+    # that has no default) and overwrite the quota knobs we care about.
+    s = Settings(POLARIS_DOMAIN="polaris-dev.xyz")  # type: ignore[call-arg]
     object.__setattr__(s, "max_global_runs", global_limit)
     object.__setattr__(s, "max_user_runs", user_limit)
     object.__setattr__(s, "run_quota_ttl_seconds", ttl)

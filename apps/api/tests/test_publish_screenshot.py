@@ -70,6 +70,7 @@ def test_chromium_command_url_is_last_positional(tmp_path: Path):
 @pytest.fixture
 def settings() -> Settings:
     return Settings(
+        POLARIS_DOMAIN="polaris-dev.xyz",  # type: ignore[call-arg]
         S3_ACCESS_KEY_ID="ak",  # type: ignore[call-arg]
         S3_SECRET_ACCESS_KEY="sk",  # type: ignore[call-arg]
         S3_BUCKET="polaris",  # type: ignore[call-arg]

@@ -249,7 +249,12 @@ def main() -> int:
             file=sys.stderr,
         )
 
-    domain = current.get("POLARIS_DOMAIN", "polaris-dev.xyz")
+    domain = current.get("POLARIS_DOMAIN", "").strip()
+    if not domain:
+        # Should be unreachable — wizard + non-interactive both ensure
+        # POLARIS_DOMAIN is set before we get here.  Surface loudly
+        # rather than print a misleading https:// URL.
+        raise RuntimeError("POLARIS_DOMAIN missing after wizard — refusing to print bogus URLs.")
     print(f"\n✓ stack up.")
     print(f"   web   →  https://{domain}")
     print(f"   vnc   →  https://vnc.{domain}    (chromium auto-loaded with {domain})")

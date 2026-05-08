@@ -314,7 +314,9 @@ def _minio_client(env: dict[str, str]) -> Any:
     We use ``https://s3.<POLARIS_DOMAIN>`` as endpoint and
     virtual-host addressing — exactly what services/s3.py does in the
     api.  Same TLS cert chain (acquired by traefik via CF DNS-01)."""
-    domain = env.get("POLARIS_DOMAIN", "polaris-dev.xyz")
+    domain = env.get("POLARIS_DOMAIN", "").strip()
+    if not domain:
+        raise RuntimeError("POLARIS_DOMAIN must be set in .env to load seed data.")
     endpoint = f"https://s3.{domain}"
     return boto3.client(
         "s3",
@@ -410,7 +412,9 @@ async def load(source: Path, *, force: bool = False) -> LoadStats:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
     env = _env()
-    domain = env.get("POLARIS_DOMAIN", "polaris-dev.xyz")
+    domain = env.get("POLARIS_DOMAIN", "").strip()
+    if not domain:
+        raise RuntimeError("POLARIS_DOMAIN must be set in .env to load seed data.")
     print(
         f"loading {len(manifest['projects'])} projects → domain={domain!r}",
         file=sys.stderr,

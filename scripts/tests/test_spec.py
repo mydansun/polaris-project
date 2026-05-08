@@ -60,7 +60,9 @@ def test_by_key_lookup():
     f = spec.by_key("POLARIS_DOMAIN")
     assert f is not None
     assert f.required is True
-    assert f.default == "polaris-dev.xyz"
+    # No default — POLARIS_DOMAIN must be supplied explicitly so a
+    # missing entry never silently lands on a stale default.
+    assert f.default is None
     assert spec.by_key("DOES_NOT_EXIST") is None
 
 

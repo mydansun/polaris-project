@@ -128,11 +128,13 @@ class Settings(BaseSettings):
         default="",
         validation_alias="POLARIS_DEV_USER_NAME",
     )
-    # Domain base for dev-plane IDE / browser subdomains (ide-<hash>.<domain>).
-    # The root `polaris-dev.xyz` origin routing lives in infra/traefik/dynamic/.
+    # Wildcard domain Traefik issues certs against and every label / URL
+    # template interpolates from.  Required — empty or missing env aborts
+    # startup so a misconfigured deploy can't silently land on the wrong
+    # origin.
     domain: str = Field(
-        default="polaris-dev.xyz",
         validation_alias="POLARIS_DOMAIN",
+        min_length=1,
     )
     # Shared external docker network that traefik watches via docker provider.
     # Per-workspace compose (dev) and per-project publish compose (prod) both

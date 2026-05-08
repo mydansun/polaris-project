@@ -30,6 +30,7 @@ from polaris_api.services.unsplash import search_and_cache
 @pytest.fixture
 def settings() -> Settings:
     s = Settings(
+        POLARIS_DOMAIN="polaris-dev.xyz",  # type: ignore[call-arg]
         UNSPLASH_ACCESS_KEY="test-key",  # type: ignore[call-arg]
         S3_ACCESS_KEY_ID="test",  # type: ignore[call-arg]
         S3_SECRET_ACCESS_KEY="test",  # type: ignore[call-arg]

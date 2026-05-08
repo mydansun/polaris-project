@@ -48,7 +48,9 @@ def _validate_domain(value: str, _env: dict[str, str]) -> ValidationResult:
 
 
 def _validate_cf_token(value: str, env: dict[str, str]) -> ValidationResult:
-    zone = env.get("POLARIS_DOMAIN", "polaris-dev.xyz").strip() or "polaris-dev.xyz"
+    zone = env.get("POLARIS_DOMAIN", "").strip()
+    if not zone:
+        return ValidationResult("fail", "POLARIS_DOMAIN must be set first.")
     return validators.cf_token(value, zone)
 
 
@@ -71,7 +73,7 @@ FIELDS: list[Field] = [
         key="POLARIS_DOMAIN",
         required=True,
         secret=False,
-        default="polaris-dev.xyz",
+        default=None,
         help="Wildcard root used for ide-*/browser-*/published subdomains. "
         "Must be a domain whose DNS lives on Cloudflare (DNS-01 challenge).",
         validator=_validate_domain,
