@@ -344,18 +344,24 @@ async def delete_project(
                     exc_info=True,
                 )
 
-    # Cascade order: browser_sessions → sessions → project_versions →
-    # workspaces → project.  ``project_versions`` keeps a FK to projects
-    # without ON DELETE CASCADE (publish history is a sibling of, not a
-    # subtree of, the project) — when the user has ever published, the
-    # row stays and blocks ``DELETE FROM projects`` with a 23503.  Drop
-    # versions explicitly here, mirroring the manual sessions /
-    # workspaces drops above.
+    # Cascade order: browser_sessions → sessions → deployments →
+    # project_versions → workspaces → project.  Two NO-ACTION FKs in
+    # the publish chain block the project drop:
+    #   * ``project_versions → projects`` — published projects have a
+    #     row that survives the project drop without a manual delete.
+    #   * ``deployments → project_versions`` — and that row in turn
+    #     keeps a deployment alive (deployments_project_id_fkey IS
+    #     CASCADE, but it doesn't fire until the project itself goes,
+    #     so the project_versions drop precedes its trigger and
+    #     deadlocks).  Drop deployments explicitly first.
     await session.execute(
         delete(BrowserSession).where(BrowserSession.project_id == project_id)
     )
     await session.execute(
         delete(SessionRow).where(SessionRow.project_id == project_id)
+    )
+    await session.execute(
+        delete(Deployment).where(Deployment.project_id == project_id)
     )
     await session.execute(
         delete(ProjectVersion).where(ProjectVersion.project_id == project_id)

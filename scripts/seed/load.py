@@ -154,26 +154,29 @@ async def _project_exists(conn: asyncpg.Connection, project_id: uuid.UUID) -> bo
 
 
 async def _delete_project_cascade(conn: asyncpg.Connection, project_id: uuid.UUID) -> None:
-    """Manual delete dance because four FK constraints don't cascade:
+    """Manual delete dance because five FK constraints don't cascade:
 
        browser_sessions_workspace_id_fkey  (browser_sessions → workspaces)
        sessions_workspace_id_fkey          (sessions → workspaces)
        workspaces_project_id_fkey          (workspaces → projects)
        project_versions_project_id_fkey    (project_versions → projects)
+       deployments_project_version_id_fkey (deployments → project_versions)
 
     Order:
       1. browser_sessions for this project (also clears workspace refs)
       2. Sessions (cascades design_intents via session_id ON DELETE CASCADE)
-      3. project_versions (own NO ACTION FK to projects; published projects
-         have at least one row here that would otherwise block step 5)
-      4. Workspaces (now safe — no session / browser-session refs)
-      5. Project (cascades deployments / clarifications via their own
-         ON DELETE CASCADE)
+      3. deployments (NO ACTION FK to project_versions blocks step 4)
+      4. project_versions (NO ACTION FK to projects blocks step 6)
+      5. Workspaces (now safe — no session / browser-session refs)
+      6. Project (cascades clarifications via its own ON DELETE CASCADE)
     """
     await conn.execute(
         "DELETE FROM browser_sessions WHERE project_id = $1", project_id
     )
     await conn.execute("DELETE FROM sessions WHERE project_id = $1", project_id)
+    await conn.execute(
+        "DELETE FROM deployments WHERE project_id = $1", project_id
+    )
     await conn.execute(
         "DELETE FROM project_versions WHERE project_id = $1", project_id
     )
