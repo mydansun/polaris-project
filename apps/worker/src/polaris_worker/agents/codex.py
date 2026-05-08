@@ -37,7 +37,6 @@ from polaris_agent_core import (
     dyn_response,
 )
 from polaris_api.services.gitignore_baseline import ensure_baseline_gitignore
-from polaris_api.services.workspaces import WorkspaceError, run_git
 
 from polaris_worker.agents.base import (
     Agent,
@@ -603,52 +602,6 @@ async def _watch_project_files(
         log.info("inotify watcher stopped (container=%s)", container)
 
 
-async def _ensure_project_git(project_root: Path) -> None:
-    """git init + baseline commit at the real project root.  Called from the
-    ``set_project_root`` handler once Codex has declared where the project
-    lives (scaffolders refuse to run in a non-empty cwd, so ``.git`` is
-    intentionally missing until now).
-
-    Critical post-init step: ``run_git`` shells out from THIS worker
-    process, which runs as root.  The ``.git`` tree it creates is
-    therefore owned by uid 0.  But the in-container Codex (workspace
-    user, uid 1000) needs to write ``.git/index.lock`` on every
-    ``git add`` / ``git commit`` later — without a chown we'd hit
-    "Permission denied" on every subsequent commit attempt.  Recursive
-    chown to 1000:1000 immediately after init bridges the gap.  Same
-    rationale lives in ``apps/api/.../services/workspaces.py::initialize_workspace``
-    for the workspace dir itself.
-    """
-    if (project_root / ".git").exists():
-        return
-    await run_git(project_root, "init", "-b", "main")
-    git_dir = project_root / ".git"
-    if git_dir.exists():
-        chown_proc = await asyncio.create_subprocess_exec(
-            "chown", "-R", "1000:1000", str(git_dir),
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, err = await chown_proc.communicate()
-        if chown_proc.returncode != 0:
-            logger.warning(
-                "set_project_root: chown of %s failed (rc=%d): %s",
-                git_dir,
-                chown_proc.returncode,
-                err.decode(errors="replace").strip(),
-            )
-    await run_git(project_root, "config", "user.email", "dev@polaris.local")
-    await run_git(project_root, "config", "user.name", "Polaris")
-    await run_git(project_root, "add", "-A")
-    await run_git(
-        project_root,
-        "commit",
-        "--allow-empty",
-        "-m",
-        "polaris: initial scaffold",
-    )
-
-
 def _build_dynamic_tool_handler(
     *,
     conn: asyncpg.Connection,
@@ -682,10 +635,9 @@ def _build_dynamic_tool_handler(
                     try:
                         if host_project_root.is_dir():
                             ensure_baseline_gitignore(host_project_root)
-                            await _ensure_project_git(host_project_root)
-                    except (OSError, WorkspaceError) as exc:
+                    except OSError as exc:
                         logger.warning(
-                            "post-scaffold seeding failed for %s: %s",
+                            "post-scaffold .gitignore write failed for %s: %s",
                             host_project_root,
                             exc,
                         )

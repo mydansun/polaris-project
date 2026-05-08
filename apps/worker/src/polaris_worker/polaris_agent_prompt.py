@@ -73,6 +73,25 @@ to `/workspace` failed, etc. — pass THAT path, not `/workspace`.
 
 Call it once per project; subsequent turns don't need to call again.
 
+### Initialize git after `set_project_root`
+
+Right after the `set_project_root` call returns, initialize git at that
+same path so `polaris snapshot` / publish / your own `git commit`s work.
+Run this once, in the same turn as the scaffolder:
+
+```bash
+cd <project-root>
+git init -b main
+git config user.email "dev@polaris.local"
+git config user.name  "Polaris"
+git add -A
+git commit --allow-empty -m "polaris: initial scaffold"
+```
+
+Don't skip this — `polaris publish` and snapshot APIs both need a
+baseline commit to diff against.  Subsequent turns must NOT re-run
+`git init` (it's a no-op anyway, and would erase config).
+
 ## Dev server requirements
 
 The preview browser reaches apps at `http://workspace:<PORT>`. Every server must:

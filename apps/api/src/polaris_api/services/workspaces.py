@@ -23,12 +23,27 @@ class GitCommit:
 
 
 async def run_git(repo_path: Path, *args: str, check: bool = True) -> str:
+    """Run git in ``repo_path`` as uid/gid 1000.
+
+    api / worker containers run as root, but the workspace is bind-mounted
+    from a tree owned by uid 1000 (the workspace container's user).  Letting
+    git write as root produces root-owned blobs/index entries inside
+    ``.git/``, after which the workspace user can't add objects whose hash
+    prefix collides with a root-created ``objects/<xx>/`` directory and
+    every later ``git add`` from inside the workspace fails with
+    "insufficient permission for adding an object to repository database".
+    Dropping privs to uid 1000 here keeps every git-touched file owned by
+    the same uid as the rest of the workspace tree.  ``user=`` requires
+    Python 3.9+ and CAP_SETUID — both true in our containers.
+    """
     process = await asyncio.create_subprocess_exec(
         "git",
         *args,
         cwd=repo_path,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        user=1000,
+        group=1000,
     )
     stdout, stderr = await process.communicate()
     if check and process.returncode != 0:
@@ -113,12 +128,14 @@ def assert_workspace_bare(repo_path: Path) -> None:
     ║ etc.) REFUSE to run when cwd contains anything — including `.git`.║
     ║ Do NOT write ANYTHING here: no .gitignore, no README, no template ║
     ║ files, and *no `git init`* either.  All post-scaffold seeding —   ║
-    ║ git init + initial commit + baseline .gitignore — happens in the  ║
-    ║ `set_project_root` dynamic-tool handler once Codex has reported   ║
-    ║ the real project root (which may be `/workspace` or a subdir like ║
-    ║ `/workspace/my-app`).  See                                        ║
-    ║   apps/worker/src/polaris_worker/runner.py::_ensure_project_git     ║
+    ║ baseline .gitignore + the agent-issued git init/config/commit —   ║
+    ║ happens after Codex calls `set_project_root` and reports the real ║
+    ║ project root (which may be `/workspace` or a subdir like          ║
+    ║ `/workspace/my-app`).  Codex itself runs `git init` in-container  ║
+    ║ as uid 1000 — the worker no longer shells out to git from         ║
+    ║ outside the workspace container.  See                             ║
     ║   apps/api/src/polaris_api/services/gitignore_baseline.py           ║
+    ║   apps/worker/src/polaris_worker/polaris_agent_prompt.py            ║
     ╚═══════════════════════════════════════════════════════════════════╝
 
     Raises WorkspaceError if the invariant is violated. Called at the tail

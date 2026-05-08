@@ -7,11 +7,12 @@ the cwd contains ANYTHING — including `.git`.  Any file written at
 or even a `git init` — silently breaks those scaffolders on a fresh
 project's first turn.
 
-If you are tempted to add such a write here, STOP.  The correct venue is
-`apps/worker/src/polaris_worker/runner.py::_ensure_project_git` (or the
-baseline-gitignore helper in `services/gitignore_baseline.py`) which
-fires inside the `set_project_root` dynamic-tool handler, after Codex
-has declared the real project root.
+If you are tempted to add such a write here, STOP.  The correct venues
+are the baseline-gitignore helper in `services/gitignore_baseline.py`,
+which fires from the `set_project_root` dynamic-tool handler once Codex
+has declared the real project root, and Codex itself — which now owns
+the `git init` step (in-container, as uid 1000) per the prompt in
+`apps/worker/src/polaris_worker/polaris_agent_prompt.py`.
 
 Run:
     cd apps/api && .venv/bin/pytest tests/test_workspace_invariant.py -v
