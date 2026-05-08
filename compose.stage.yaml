@@ -1,0 +1,320 @@
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║  ⚠️  STAGING — NOT REAL PRODUCTION  ⚠️                                ║
+# ║                                                                      ║
+# ║  Polaris does not solve container isolation, per-tenant Codex        ║
+# ║  credentials, or runaway-workspace defense.  This file is for:       ║
+# ║    • a team's shared dev / dogfood machine, OR                       ║
+# ║    • a single host that sits behind an external firewall the rest    ║
+# ║      of the world can't reach.                                       ║
+# ║                                                                      ║
+# ║  Do NOT point untrusted traffic at a host running this stack.        ║
+# ║  Several services (Traefik dashboard on :8090, MinIO console,        ║
+# ║  the local docker registry) are intentionally unauthenticated —      ║
+# ║  the firewall is the boundary.                                       ║
+# ╚══════════════════════════════════════════════════════════════════════╝
+#
+# Standalone compose file — invoke directly, NOT layered on top of
+# compose.dev.yaml:
+#
+#   docker compose -f compose.stage.yaml up -d --build
+#   docker compose -f compose.stage.yaml down
+#
+# (Tip: `export COMPOSE_FILE=compose.stage.yaml` to drop the `-f`.)
+#
+# What differs from compose.dev.yaml
+# ----------------------------------
+#  1. Compose project name → `polaris-stage`.  Container + named-volume
+#     prefixes change accordingly so a dev and stage stack on the same
+#     host don't clobber each other's state.
+#  2. api: uvicorn drops --reload + --reload-dir, runs --workers 2 with
+#     --proxy-headers (Traefik terminates TLS upstream).  Source is
+#     still bind-mounted, so a `docker compose restart api` picks up
+#     code edits — there's just no filesystem watcher.
+#  3. web: replaces the Vite dev server with a nginx-served static
+#     bundle (apps/web/Dockerfile.stage).  No source bind-mounts,
+#     traefik upstream port flips 5173 → 8080.
+#
+# Everything else (postgres, redis, registry, minio, traefik, worker,
+# dev-vnc, networks) tracks compose.dev.yaml unchanged.
+
+name: polaris-stage
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: "123456"
+      POSTGRES_DB: polaris
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1::5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d polaris"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - polaris-shared
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - polaris-shared
+
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    environment:
+      REGISTRY_HTTP_ADDR: "0.0.0.0:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5000/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - polaris-shared
+    ports:
+      - "127.0.0.1:5000:5000"
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY}
+      MINIO_DOMAIN: s3.${POLARIS_DOMAIN}
+    volumes:
+      - ./infra/minio/data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - polaris-shared
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.minio.rule=HostRegexp(`^(.+\\.)?s3\\.${POLARIS_DOMAIN}$$`)"
+      - "traefik.http.routers.minio.entrypoints=websecure"
+      - "traefik.http.routers.minio.tls=true"
+      - "traefik.http.routers.minio.tls.certresolver=cf"
+      - "traefik.http.routers.minio.tls.domains[0].main=${POLARIS_DOMAIN}"
+      - "traefik.http.routers.minio.tls.domains[0].sans=*.s3.${POLARIS_DOMAIN}"
+      - "traefik.http.services.minio.loadbalancer.server.port=9000"
+
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8090:8090"   # dashboard (api.insecure) — firewall is the boundary
+    environment:
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN:?run scripts/up.py to configure}
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_EMAIL=${ACME_EMAIL:-noreply@polaris.dev}
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_STORAGE=/letsencrypt/acme.json
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_CASERVER=${TRAEFIK_CASERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_DNSCHALLENGE_PROVIDER=cloudflare
+      - TRAEFIK_CERTIFICATESRESOLVERS_CF_ACME_DNSCHALLENGE_RESOLVERS=1.1.1.1:53,8.8.8.8:53
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/traefik/traefik.yaml:/etc/traefik/traefik.yaml:ro
+      - ./infra/traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-acme:/letsencrypt
+    networks:
+      - traefik-public
+      - polaris-shared
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8090/ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  api:
+    image: polaris/api:stage
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      POLARIS_DATABASE_URL: postgresql+asyncpg://root:123456@postgres:5432/polaris
+      POLARIS_REDIS_URL: redis://redis:6379/0
+      POLARIS_HOST_REPO_ROOT: ${PWD}
+      POLARIS_HOST_CODEX_AUTH_PATH: ${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}
+    env_file:
+      - .env
+    volumes:
+      # Same path inside as outside — keeps generated workspace compose
+      # bind-mount paths valid both for the host docker daemon AND for
+      # the api process reading/writing them.
+      - "${PWD}:${PWD}"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}:${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}"
+    working_dir: ${PWD}/apps/api
+    # No --reload; --workers 2 + proxy-headers for Traefik upstream.
+    # Code edits live in the bind-mount; pick them up with
+    # `docker compose -f compose.stage.yaml restart api`.
+    command:
+      - uvicorn
+      - polaris_api.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --workers
+      - "2"
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - "*"
+    networks:
+      - polaris-shared
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.api.rule=Host(`${POLARIS_DOMAIN}`) && PathPrefix(`/api/`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.routers.api.tls.certresolver=cf"
+      - "traefik.http.routers.api.tls.domains[0].main=${POLARIS_DOMAIN}"
+      - "traefik.http.routers.api.tls.domains[0].sans=*.${POLARIS_DOMAIN}"
+      - "traefik.http.routers.api.middlewares=strip-api-prefix@file"
+      - "traefik.http.services.api.loadbalancer.server.port=8000"
+
+  worker:
+    image: polaris/worker:stage
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      POLARIS_DATABASE_URL: postgresql+asyncpg://root:123456@postgres:5432/polaris
+      POLARIS_REDIS_URL: redis://redis:6379/0
+      POLARIS_HOST_REPO_ROOT: ${PWD}
+      POLARIS_HOST_CODEX_AUTH_PATH: ${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}
+    env_file:
+      - .env
+    volumes:
+      - "${PWD}:${PWD}"
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}:${POLARIS_HOST_CODEX_AUTH_PATH:-${HOME}/.codex/auth.json}"
+    working_dir: ${PWD}/apps/worker
+    networks:
+      - polaris-shared
+
+  web:
+    image: polaris/web:stage
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.stage
+      # Vite reads VITE_API_BASE_URL via import.meta.env; the default
+      # `/api` in the Dockerfile makes the bundle work behind any
+      # domain (Traefik routes /api/* → api:8000).  Override only if
+      # the deploy uses a non-default API path.
+      # args:
+      #   VITE_API_BASE_URL: /api
+    restart: unless-stopped
+    # Static bundle — no source mounts, no env_file, no Vite HMR env.
+    networks:
+      - polaris-shared
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.web.rule=Host(`${POLARIS_DOMAIN}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls=true"
+      - "traefik.http.routers.web.tls.certresolver=cf"
+      - "traefik.http.routers.web.tls.domains[0].main=${POLARIS_DOMAIN}"
+      - "traefik.http.routers.web.tls.domains[0].sans=*.${POLARIS_DOMAIN}"
+      # Pre-issue *.${POLARIS_PROD_DOMAIN_BASE} on the always-on web
+      # service so the cert is in the traefik-acme volume before any
+      # published-project URL is hit.
+      - "traefik.http.routers.web.tls.domains[1].main=${POLARIS_PROD_DOMAIN_BASE}"
+      - "traefik.http.routers.web.tls.domains[1].sans=*.${POLARIS_PROD_DOMAIN_BASE}"
+      # nginx-unprivileged listens on :8080.  Dev's Vite was on :5173.
+      - "traefik.http.services.web.loadbalancer.server.port=8080"
+      - "traefik.http.routers.www-redirect.rule=Host(`www.${POLARIS_DOMAIN}`)"
+      - "traefik.http.routers.www-redirect.entrypoints=websecure"
+      - "traefik.http.routers.www-redirect.tls=true"
+      - "traefik.http.routers.www-redirect.tls.certresolver=cf"
+      - "traefik.http.routers.www-redirect.middlewares=redirect-www-to-apex@file"
+      - "traefik.http.routers.www-redirect.service=web"
+
+  dev-vnc:
+    image: lscr.io/linuxserver/chromium:latest
+    restart: unless-stopped
+    shm_size: "1gb"
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "Etc/UTC"
+      CHROME_CLI: "https://${POLARIS_DOMAIN}/"
+    extra_hosts:
+      - "${POLARIS_DOMAIN}:host-gateway"
+    networks:
+      - polaris-shared
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-public"
+      - "traefik.http.routers.dev-vnc.rule=Host(`vnc.${POLARIS_DOMAIN}`)"
+      - "traefik.http.routers.dev-vnc.entrypoints=websecure"
+      - "traefik.http.routers.dev-vnc.tls=true"
+      - "traefik.http.routers.dev-vnc.tls.certresolver=cf"
+      - "traefik.http.routers.dev-vnc.tls.domains[0].main=${POLARIS_DOMAIN}"
+      - "traefik.http.routers.dev-vnc.tls.domains[0].sans=*.${POLARIS_DOMAIN}"
+      - "traefik.http.services.dev-vnc.loadbalancer.server.port=3000"
+
+networks:
+  polaris-shared:
+    name: polaris-shared
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.200.0.0/24
+  traefik-public:
+    name: traefik-public
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.110.0.0/24
+
+volumes:
+  # Stage-specific volume names so a dev stack on the same host doesn't
+  # clobber stage state (and vice versa).
+  postgres-data:
+    name: polaris-stage-postgres-data
+  redis-data:
+    name: polaris-stage-redis-data
+  registry-data:
+    name: polaris-stage-registry-data
+  traefik-acme:
+    name: polaris-stage-traefik-acme

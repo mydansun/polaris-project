@@ -1,0 +1,48 @@
+# Polaris web — staging image.  Two-stage build: pnpm builds the static
+# bundle, nginx serves it.  No vite dev server, no HMR, no source bind-
+# mount at runtime — code edits require a `docker compose ... build web`.
+#
+#   docker build -t polaris/web:stage -f apps/web/Dockerfile.stage .
+
+# ── Stage 1: build the static bundle ──────────────────────────────────
+FROM node:22-alpine AS builder
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /app
+
+# Install deps first (layer cache survives source edits).
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages/ui/package.json packages/ui/package.json
+COPY packages/shared-types/package.json packages/shared-types/package.json
+COPY packages/welcome-page/package.json packages/welcome-page/package.json
+RUN pnpm install --frozen-lockfile
+
+# Workspace source for everything @polaris/web depends on.
+COPY tsconfig.base.json tsconfig.base.json
+COPY apps/web apps/web
+COPY packages/ui packages/ui
+COPY packages/shared-types packages/shared-types
+COPY packages/welcome-page packages/welcome-page
+
+# api.ts reads VITE_API_BASE_URL via import.meta.env; bake the relative
+# path so the bundle works behind any domain (Traefik routes /api/* →
+# api:8000).  If the deploy needs a different base URL, override at
+# build time with `--build-arg VITE_API_BASE_URL=...`.
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
+RUN pnpm --filter @polaris/web build
+
+# ── Stage 2: nginx runtime ────────────────────────────────────────────
+# Unprivileged variant runs as uid 101 and listens on :8080 — no root,
+# no setcap dance, traefik upstream points at 8080.
+FROM nginxinc/nginx-unprivileged:1.27-alpine
+
+# SPA-style fallback: any path that doesn't match a real file falls
+# through to index.html so React Router handles it.
+COPY apps/web/nginx.stage.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+
+EXPOSE 8080
