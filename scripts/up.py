@@ -171,12 +171,12 @@ def _maybe_build(skip: bool) -> None:
 # ── compose up + wait ────────────────────────────────────────────────────
 
 
-def _compose_up(cf: Path) -> None:
+def _compose_up(cf: Path, env_path: Path) -> None:
     print(f"▶ docker compose -f {cf.name} up -d --build", flush=True)
-    docker_ops.compose(cf, "up", "-d", "--build")
+    docker_ops.compose(cf, "up", "-d", "--build", env_file=env_path)
 
 
-def _wait_healthy(cf: Path, timeout: float = 90.0) -> bool:
+def _wait_healthy(cf: Path, env_path: Path, timeout: float = 90.0) -> bool:
     """Poll `docker compose ps` until all services with healthchecks are
     reporting `healthy` (or the timeout fires)."""
     deadline = time.monotonic() + timeout
@@ -188,6 +188,7 @@ def _wait_healthy(cf: Path, timeout: float = 90.0) -> bool:
             "{{.Service}} {{.Status}}",
             check=False,
             env_extra={},
+            env_file=env_path,
         )
         # `docker compose ps` doesn't return a nice machine format in older
         # versions; fall back to plain inspection.
@@ -286,9 +287,9 @@ def main() -> int:
     # auth path even when it wasn't explicitly set in .env.<mode>.
     os.environ["POLARIS_HOST_CODEX_AUTH_PATH"] = codex_auth_path
 
-    _compose_up(cf)
+    _compose_up(cf, env_path)
     print("▶ waiting for healthchecks (≤ 90s) …", flush=True)
-    if not _wait_healthy(cf):
+    if not _wait_healthy(cf, env_path):
         print(
             f"⚠ some services didn't become healthy within 90s.  Check "
             f"`docker compose -f {cf.name} ps` and logs.",

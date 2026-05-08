@@ -74,10 +74,20 @@ def compose(
     cwd: Path | None = None,
     check: bool = True,
     env_extra: dict[str, str] | None = None,
+    env_file: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Invoke ``docker compose -f <file> <args>``."""
+    """Invoke ``docker compose -f <file> <args>``.
+
+    ``env_file`` forwards as ``--env-file`` so YAML interpolation reads
+    the per-mode `.env.<mode>` instead of the default `.env` (which
+    doesn't exist when each mode owns its own env file).
+    """
+    cmd = ["docker", "compose", "-f", str(compose_file)]
+    if env_file is not None:
+        cmd.extend(["--env-file", str(env_file)])
+    cmd.extend(args)
     return run(
-        ["docker", "compose", "-f", str(compose_file), *args],
+        cmd,
         cwd=cwd or compose_file.parent,
         check=check,
         env_extra=env_extra,

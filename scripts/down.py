@@ -155,6 +155,7 @@ def main() -> int:
         return 0
 
     cf = paths.compose_file(mode)
+    env_path = paths.env_file(mode)
 
     print("▶ docker compose down")
     if args.clear:
@@ -164,9 +165,9 @@ def main() -> int:
         ):
             print("aborted", file=sys.stderr)
             return 130
-        docker_ops.compose(cf, "down", "-v", check=False)
+        docker_ops.compose(cf, "down", "-v", check=False, env_file=env_path)
     else:
-        docker_ops.compose(cf, "down", check=False)
+        docker_ops.compose(cf, "down", check=False, env_file=env_path)
 
     print("\n▶ sweeping runtime containers (workspace / browser / publish)")
     swept = _sweep_runtime_containers()
