@@ -43,7 +43,12 @@ class PolarisCodexError(RuntimeError):
 
 
 class TurnTimeoutError(PolarisCodexError):
-    """A turn was cut short because it hit the wall-clock budget."""
+    """A turn was cut short because it hit the wall-clock budget.
+
+    Distinct from ``TurnInactivityError``: this fires only when the
+    absolute wall-clock ceiling is reached regardless of activity —
+    intended as a final cost-cap safety net, not a productivity gate.
+    """
 
     def __init__(
         self,
@@ -56,6 +61,32 @@ class TurnTimeoutError(PolarisCodexError):
         msg = (
             f"Turn total timeout: {elapsed_seconds:.0f}s exceeded the "
             f"{budget_seconds:.0f}s wall-clock budget"
+        )
+        super().__init__(msg)
+
+
+class TurnInactivityError(PolarisCodexError):
+    """A turn produced no notifications for too long.
+
+    The agent went silent — possibly stuck in an internal loop, waiting
+    on a hung syscall, or otherwise unresponsive — even though the
+    WebSocket transport itself is alive.  Distinct from
+    ``ConnectionLostError`` (transport dead) and ``TurnTimeoutError``
+    (absolute wall-clock ceiling hit).
+    """
+
+    def __init__(
+        self,
+        *,
+        idle_seconds: float,
+        budget_seconds: float,
+    ) -> None:
+        self.idle_seconds = idle_seconds
+        self.budget_seconds = budget_seconds
+        msg = (
+            f"Turn went idle for {idle_seconds:.0f}s with no notifications "
+            f"(threshold: {budget_seconds:.0f}s) — agent is not making "
+            "progress, killing turn"
         )
         super().__init__(msg)
 
@@ -345,10 +376,21 @@ class PolarisAgentConfig:
     # If None, the tool call returns an error telling Codex to proceed
     # without user input.
     user_input_handler: Callable[[list[dict[str, Any]], dict[str, Any]], Awaitable[dict[str, Any]]] | None = None
-    # Total wall-clock budget for one turn: hard cap no matter how
-    # productive the agent is.  Generous by default — complex scaffold +
-    # verify turns legitimately take several minutes.
-    turn_timeout_seconds: float = 900
+    # Total wall-clock budget for one turn: absolute cost-cap ceiling
+    # no matter how productive the agent is.  Generous by default —
+    # the active gate is `turn_inactivity_timeout_seconds`; this only
+    # bites if the agent both keeps producing notifications AND fails
+    # to wrap up after a really long time (runaway loop with progress).
+    turn_timeout_seconds: float = 7200
+    # How long the agent can go WITHOUT producing a notification before
+    # we kill the turn.  This is the "real" timeout — a productive turn
+    # (commands, reasoning steps, tool calls) keeps producing events,
+    # so it never trips.  A stuck turn (internal loop, hung syscall,
+    # unresponsive model) goes silent and gets killed after this many
+    # seconds.  Distinct from `liveness_check_interval_seconds`: that
+    # one only checks if the WebSocket transport is alive; this one
+    # gates on actual agent productivity.
+    turn_inactivity_timeout_seconds: float = 600
     # How often to probe WebSocket liveness when no notifications arrive.
     # The websockets library already sends ping/pong (30s/20s), so this
     # interval only controls how quickly we *notice* a dead connection
@@ -531,7 +573,7 @@ class PolarisCodexSession:
         await self._client.request("turn/start", turn_params)
         try:
             await self._consume_turn(thread_id=thread_id, sink=sink)
-        except TurnTimeoutError as exc:
+        except (TurnTimeoutError, TurnInactivityError) as exc:
             with contextlib.suppress(Exception):
                 await self._client.request("turn/interrupt", {"threadId": thread_id})
             await sink.on_turn_completed("failed", str(exc))
@@ -556,25 +598,33 @@ class PolarisCodexSession:
     async def _consume_turn(self, *, thread_id: str, sink: TurnItemSink) -> None:
         """Drain Codex notifications for this turn.
 
-        Two safeguards prevent the turn from running forever:
+        Three safeguards prevent the turn from running forever:
 
-        - **total timeout** (``turn_timeout_seconds``): absolute wall-clock
-          cap regardless of productivity.
-        - **liveness check**: when no notification arrives within
-          ``liveness_check_interval_seconds``, probe ``is_alive()`` on the
-          WebSocket.  If the connection dropped (container restart, network
-          partition, codex crash), raise ``ConnectionLostError`` immediately.
-          If the connection is still healthy, keep waiting — the agent is
-          simply busy with a long-running operation (npm install, docker
-          build, etc.).
+        - **inactivity timeout** (``turn_inactivity_timeout_seconds``):
+          if no notification arrives for this long, the agent is stuck —
+          internal loop, hung syscall, unresponsive model — and the turn
+          is killed.  This is the active gate; productive turns
+          (continuous reasoning / tool-call events) never trip it.
+        - **liveness check** (``liveness_check_interval_seconds``): when
+          no notification arrives within this interval, probe
+          ``is_alive()`` on the WebSocket.  Connection dropped (container
+          restart, network partition, codex crash) → ``ConnectionLostError``
+          immediately.  Connection alive but silent → keep waiting until
+          the inactivity timeout.
+        - **total wall-clock ceiling** (``turn_timeout_seconds``): a
+          generous absolute cap (default 2h) as a final cost-cap safety
+          net for runaway loops that DO keep producing events.
 
-        This replaces the old idle-timeout approach which would kill
-        perfectly healthy turns during long shell commands.
+        This replaces the old idle-timeout approach which killed perfectly
+        healthy turns during long shell commands, and the previous
+        15-minute wall-clock that killed legitimate multi-step builds.
         """
         assert self._client is not None
         loop = asyncio.get_running_loop()
         start = loop.time()
+        last_activity = start
         total_budget = self._config.turn_timeout_seconds
+        idle_budget = self._config.turn_inactivity_timeout_seconds
         check_interval = self._config.liveness_check_interval_seconds
 
         while True:
@@ -585,9 +635,19 @@ class PolarisCodexSession:
                     elapsed_seconds=elapsed,
                     budget_seconds=total_budget,
                 )
+            idle = now - last_activity
+            if idle >= idle_budget:
+                raise TurnInactivityError(
+                    idle_seconds=idle,
+                    budget_seconds=idle_budget,
+                )
 
-            remaining = total_budget - elapsed
-            wait = max(0.01, min(check_interval, remaining))
+            # Wait at most until the next gate fires (whichever comes first).
+            wait = max(0.01, min(
+                check_interval,
+                total_budget - elapsed,
+                idle_budget - idle,
+            ))
             try:
                 msg = await asyncio.wait_for(
                     self._client.next_notification(), timeout=wait
@@ -595,12 +655,16 @@ class PolarisCodexSession:
             except asyncio.TimeoutError:
                 # No notification within the check interval — probe the
                 # WebSocket.  If still alive, Codex is just busy; loop back
-                # and keep waiting.  If dead, bail out immediately.
+                # and let the outer guards decide whether to keep waiting
+                # or kill the turn for inactivity.  If dead, bail out.
                 if not self._client.is_alive():
                     raise ConnectionLostError(
                         elapsed_seconds=loop.time() - start
                     )
                 continue
+            # Got a notification — reset the inactivity clock before
+            # dispatching to the sink.
+            last_activity = loop.time()
             method = msg.get("method")
             params = msg.get("params") or {}
             if not isinstance(method, str) or not isinstance(params, dict):

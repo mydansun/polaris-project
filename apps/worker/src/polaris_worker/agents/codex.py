@@ -439,6 +439,7 @@ async def _get_or_open_session(
                 model=settings.codex_model,
                 approval_policy=settings.codex_approval_policy,
                 turn_timeout_seconds=settings.codex_turn_timeout_seconds,
+                turn_inactivity_timeout_seconds=settings.codex_inactivity_timeout_seconds,
                 liveness_check_interval_seconds=settings.codex_liveness_check_interval_seconds,
             )
             session = ReplayCodexSession(config, fixture_path=Path(replay_path))
@@ -495,6 +496,7 @@ async def _get_or_open_session(
             sandbox_mode=None,
             approval_policy=settings.codex_approval_policy,
             turn_timeout_seconds=settings.codex_turn_timeout_seconds,
+            turn_inactivity_timeout_seconds=settings.codex_inactivity_timeout_seconds,
             liveness_check_interval_seconds=settings.codex_liveness_check_interval_seconds,
             event_tap=_codex_tap,
         )

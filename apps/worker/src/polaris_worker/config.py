@@ -40,12 +40,21 @@ class Settings(BaseSettings):
         default="",
         validation_alias="OPENAI_SECRET",
     )
-    # Total wall-clock cap on one turn.  Generous on purpose — complex
-    # scaffold + validate turns legitimately take minutes.  Liveness is
-    # detected via WebSocket ping/pong, not an idle timer.
+    # Total wall-clock cap on one turn.  Now an absolute cost-cap
+    # ceiling rather than the active gate — the inactivity timeout
+    # below catches stuck turns first, so this only fires for runaway
+    # loops that DO keep producing notifications for hours.
     codex_turn_timeout_seconds: float = Field(
-        default=900,
+        default=7200,
         validation_alias="POLARIS_CODEX_TURN_TIMEOUT_SECONDS",
+    )
+    # The "real" turn timeout: kill if no notification (reasoning step,
+    # command execution, tool call, etc.) arrives for this long.  A
+    # productive turn never trips it; a stuck turn (hung syscall,
+    # internal loop, unresponsive model) goes silent and gets killed.
+    codex_inactivity_timeout_seconds: float = Field(
+        default=600,
+        validation_alias="POLARIS_CODEX_INACTIVITY_TIMEOUT_SECONDS",
     )
     codex_liveness_check_interval_seconds: float = Field(
         default=30,

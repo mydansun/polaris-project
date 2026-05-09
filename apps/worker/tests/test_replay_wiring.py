@@ -31,7 +31,8 @@ def _reset_session_cache():
 class _FakeSettings:
     codex_model = "gpt-5"
     codex_approval_policy = "never"
-    codex_turn_timeout_seconds = 900
+    codex_turn_timeout_seconds = 7200
+    codex_inactivity_timeout_seconds = 600
     codex_liveness_check_interval_seconds = 30
 
 
