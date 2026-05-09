@@ -22,6 +22,24 @@ Subsequent messages run Codex directly with plan / build modes.
 - [Roadmap](./docs/ROADMAP.md) · [中文](./docs/ROADMAP.zh.md)
 - [Testing](./docs/TESTING.md) · [中文](./docs/TESTING.zh.md)
 
+## Live demos
+
+Two projects published from the production stack — click the
+screenshot to open the live site, or watch the build walkthrough on
+Bilibili / YouTube to see the full discovery → scaffold → publish loop.
+
+### Golf club landing page
+
+[![Golf club landing page](./docs/assets/demos/golf-club.jpg)](https://e51fff6d-9fae-423c-a6ea-1d52ceba481b.prod.polaris.surf/)
+
+[Live site](https://e51fff6d-9fae-423c-a6ea-1d52ceba481b.prod.polaris.surf/) · [Bilibili walkthrough](https://www.bilibili.com/video/BV1EsRXBEEKA/) · [YouTube walkthrough](https://youtu.be/XEX8aWYLx38)
+
+### To-Do list app
+
+[![To-Do list app](./docs/assets/demos/todo-list.jpg)](https://10011e54-a7cb-479e-a9a1-f49aa55e3a3b.prod.polaris.surf/)
+
+[Live site](https://10011e54-a7cb-479e-a9a1-f49aa55e3a3b.prod.polaris.surf/) · [Bilibili walkthrough](https://www.bilibili.com/video/BV1EsRXBEEFf/) · [YouTube walkthrough](https://youtu.be/9z6zE_Ul5ws)
+
 ## Quick Start
 
 ```sh

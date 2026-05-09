@@ -20,6 +20,24 @@ mood board,然后 Codex 接手。后续消息直接走 Codex 的 plan / build mo
 - [路线图](./docs/ROADMAP.zh.md) · [English](./docs/ROADMAP.md)
 - [测试](./docs/TESTING.zh.md) · [English](./docs/TESTING.md)
 
+## 在线演示
+
+两个由生产环境一键发布出来的项目 —— 点击截图直接打开线上站点,
+或在 B 站 / YouTube 看全程录屏(从澄清需求 → 灵感参考 → 项目脚手架
+→ 一键发布)。
+
+### 高尔夫俱乐部落地页
+
+[![高尔夫俱乐部落地页](./docs/assets/demos/golf-club.jpg)](https://e51fff6d-9fae-423c-a6ea-1d52ceba481b.prod.polaris.surf/)
+
+[线上站点](https://e51fff6d-9fae-423c-a6ea-1d52ceba481b.prod.polaris.surf/) · [B 站录屏](https://www.bilibili.com/video/BV1EsRXBEEKA/) · [YouTube 录屏](https://youtu.be/XEX8aWYLx38)
+
+### To-Do 待办应用
+
+[![To-Do 待办应用](./docs/assets/demos/todo-list.jpg)](https://10011e54-a7cb-479e-a9a1-f49aa55e3a3b.prod.polaris.surf/)
+
+[线上站点](https://10011e54-a7cb-479e-a9a1-f49aa55e3a3b.prod.polaris.surf/) · [B 站录屏](https://www.bilibili.com/video/BV1EsRXBEEFf/) · [YouTube 录屏](https://youtu.be/9z6zE_Ul5ws)
+
 ## Quick Start
 
 ```sh
