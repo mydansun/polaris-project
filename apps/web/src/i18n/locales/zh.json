@@ -59,8 +59,8 @@
     "proceed": "开始执行",
     "orTypeAdjustments": "或在下方输入调整意见",
     "codexQuota": {
-      "tooltip": "Codex 5 小时配额已使用 {{percent}}%",
-      "tooltipWithReset": "Codex 5 小时配额已使用 {{percent}}% · {{reset}}后重置"
+      "tooltip": "Coding agent 5 小时配额已使用 {{percent}}%",
+      "tooltipWithReset": "Coding agent 5 小时配额已使用 {{percent}}% · {{reset}}后重置"
     },
     "menu": {
       "switchProject": "切换项目",

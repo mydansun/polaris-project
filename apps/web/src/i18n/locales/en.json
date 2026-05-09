@@ -59,8 +59,8 @@
     "proceed": "Proceed",
     "orTypeAdjustments": "or type adjustments below",
     "codexQuota": {
-      "tooltip": "Codex 5-hour quota: {{percent}}% used",
-      "tooltipWithReset": "Codex 5-hour quota: {{percent}}% used · resets in {{reset}}"
+      "tooltip": "Coding agent 5-hour quota: {{percent}}% used",
+      "tooltipWithReset": "Coding agent 5-hour quota: {{percent}}% used · resets in {{reset}}"
     },
     "menu": {
       "switchProject": "Switch project",

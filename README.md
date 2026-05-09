@@ -1,14 +1,19 @@
 # Polaris
 
-Polaris is an AI full-stack application building platform for end users.
-The platform turns a natural-language request into working code, real
-browser-verified behavior, Git-backed versions, and one-click Docker +
-Traefik-routed deployments at `<uuid>.prod.${POLARIS_DOMAIN}`.
+Polaris turns your idea into a real, accessible full-stack application.
 
-First messages route through a **discovery agent** (LangGraph: clarifier
-→ references → brief compiler → mood board generator) to produce a
-design brief and a generated visual mood board before Codex takes over.
-Subsequent messages run Codex directly with plan / build modes.
+Just describe what you want to build. Polaris writes the code, runs
+the project, checks the result in a real browser, and publishes it as
+a public website when it's ready.
+
+It doesn't just generate code — it helps you get the application to a
+working, usable state.
+
+Polaris 把你的想法变成一个真正能访问的全栈应用。
+
+你只需要描述想做什么,它会自动写代码、运行项目、用真实浏览器检查
+效果,并在完成后发布成一个公开网站。它不是单纯生成代码,而是帮你
+把应用做到能用。
 
 ## Documentation
 

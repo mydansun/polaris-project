@@ -1,12 +1,10 @@
 # Polaris
 
-Polaris 是一个面向终端用户的 AI 全栈 app 构建平台。平台把自然语言
-请求变成可工作的代码、真实浏览器验证过的行为、Git 备份的版本,以及
-一键 Docker + Traefik 路由的部署 —— 落到 `<uuid>.prod.${POLARIS_DOMAIN}`。
+Polaris 把你的想法变成一个真正能访问的全栈应用。
 
-第一条消息走 **discovery agent**(LangGraph:clarifier → references →
-brief compiler → mood board generator),产出 design brief 和生成的
-mood board,然后 Codex 接手。后续消息直接走 Codex 的 plan / build mode。
+你只需要描述想做什么,它会自动写代码、运行项目、用真实浏览器检查
+效果,并在完成后发布成一个公开网站。它不是单纯生成代码,而是帮你
+把应用做到能用。
 
 ## 文档
 
