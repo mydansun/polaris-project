@@ -135,6 +135,31 @@ services:
       - polaris-shared
     restart: "no"
 
+  # One-shot welcome-page builder.  ``packages/welcome-page/dist/`` is a
+  # tailwind / template build product (gitignored), but the api process
+  # reads it via the host bind-mount when generating per-workspace
+  # chromium-vnc compose files: missing dist → no ``--load-extension``
+  # / ``--new-tab-page`` flags get added → the workspace browser falls
+  # back to Google.  api ``depends_on`` this completing so a fresh
+  # deploy can never serve a workspace whose new-tab override is gone.
+  # pnpm install + tailwind compile takes ~30-90s first time, then
+  # node_modules cache makes re-runs near-instant; idempotent so
+  # re-running on every up.py is fine.
+  welcome-build:
+    image: node:22-alpine
+    working_dir: /repo
+    volumes:
+      - ${PWD}:/repo
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        corepack enable
+        pnpm --filter @polaris/welcome-page... install --frozen-lockfile
+        pnpm --filter @polaris/welcome-page build
+    restart: "no"
+
   traefik:
     image: traefik:v3.6
     restart: unless-stopped
@@ -215,6 +240,8 @@ services:
       migrate:
         condition: service_completed_successfully
       minio-init:
+        condition: service_completed_successfully
+      welcome-build:
         condition: service_completed_successfully
     environment:
       # Datastore URLs default to 127.0.0.1 in pydantic Settings — that

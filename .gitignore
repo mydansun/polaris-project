@@ -4,6 +4,9 @@
 !.env.example
 .idea
 node_modules/
+
+# pnpm content store; created by welcome-build container at workspace root
+.pnpm-store/
 dist/
 build/
 coverage/
