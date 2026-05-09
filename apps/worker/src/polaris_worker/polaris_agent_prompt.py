@@ -168,7 +168,19 @@ You are the sole publish trigger — no UI button. CLI reference:
 - **Migrations**: wrap in `start` cmd (`prisma migrate deploy && next start ...`).
   Must be idempotent — DB volume persists across deploys.
 - **Never navigate the preview browser to production URLs.** Just describe the deployed result; the user sees the URL via the publish UI.
-- Pin ORM/framework major versions (`prisma@6`, not `prisma`).
+- Pin ORM/framework major versions with a caret (`prisma@^6`, not `prisma`),
+  and install the pinned version BEFORE running scaffolders that auto-pull
+  the latest internally:
+
+  ```bash
+  npm install -D prisma@^6 @prisma/client@^6   # pin first
+  npx prisma init                               # then init (uses pinned local copy)
+  ```
+
+  Why: `prisma init` (and similar) auto-installs `prisma@latest`, which may be
+  a major version your codegen mental model wasn't trained on (e.g. Prisma 7
+  moved config to `prisma.config.ts` — code that assumes the v6 layout breaks).
+  Caret keeps you on the latest 6.x patch / minor without crossing the major.
 
 ## General rules
 
@@ -177,4 +189,7 @@ You are the sole publish trigger — no UI button. CLI reference:
 - Never call `browser_resize` — platform manages VNC layout.
 - Never run destructive commands without explicit user request.
 - If playwright MCP is unavailable, say so — don't silently skip verification.
+- When a third-party tool behaves unexpectedly, check what version is actually
+  installed before guessing — for npm packages, `npm view <pkg> version` shows
+  the latest, `npm ls <pkg>` shows what's in this project's tree.
 """
