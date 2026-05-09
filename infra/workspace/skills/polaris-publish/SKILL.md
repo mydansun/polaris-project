@@ -10,14 +10,28 @@ Three commands cover 90% of the lifecycle: `scaffold-publish`, `publish`, `rollb
 ## Happy path (first publish)
 
 ```bash
-polaris scaffold-publish              # see menu + auto-detected stack
-polaris scaffold-publish --stack=node # writes Dockerfile, compose.prod.yml, polaris.yaml
+polaris scaffold-publish                            # menu mode — read what it auto-detects
+polaris scaffold-publish --stack=<auto-detected>    # use the stack the menu suggested
 # review/edit the three files, commit
 git add . && git commit -m "scaffold publish"
-polaris publish                       # build + smoke + promote, log streams via SSE
+polaris publish                                     # build + smoke + promote, log streams via SSE
 ```
 
-Stacks: `spa` (Vite/Astro/CRA → nginx), `node` (Express/Next SSR/Fastify), `python` (FastAPI/Django/Flask), `static` (pure HTML), `custom` (you author the manifest).
+**Always run the menu form first** and pick the auto-detected stack rather than guessing.  The detector reads marker files (Prisma schema, Vite dep, requirements.txt, etc.) — guessing wrong (e.g. picking `node` for a Prisma project) silently produces a Dockerfile that doesn't `prisma generate`, and you'll burn 5+ failed publishes finding out.
+
+Stacks: `spa` (Vite/Astro/CRA → nginx), `node` (Express/Next SSR/Fastify, no Prisma), `node-prisma` (same as node + copies `prisma/` before install + `prisma generate`), `python` (FastAPI/Django/Flask), `static` (pure HTML), `custom` (you author the manifest).
+
+## Dry-run the build locally before `polaris publish`
+
+`polaris publish` runs `polaris.yaml::build` inside a fresh production container — TypeScript / linter / type errors that pass in dev (lenient) but fail in prod (strict) only surface there, and each round-trip costs ~30-60s of docker build.  Catch them in one pass first:
+
+```bash
+# In the workspace, from the project root, run the literal build cmd
+# from polaris.yaml.  Example for a Next.js project:
+npm run build
+```
+
+Fix everything it reports, commit, THEN `polaris publish`.
 
 `polaris publish` runs `prepublish-audit` automatically — secret scan, size scan, plus an LLM deep-audit on the platform side. Failed audit blocks the build.
 
