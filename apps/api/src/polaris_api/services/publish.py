@@ -200,6 +200,15 @@ _STACK_DEFAULTS: dict[str, dict[str, str]] = {
         "build": "npm run build",
         "start": "npm start",
     },
+    "node-prisma": {
+        "port": "3000",
+        "build": "npm run build",
+        # Prisma stacks must apply pending migrations before serving;
+        # otherwise the first DB query crashes with "relation doesn't
+        # exist" on a fresh prod database.  ``&&`` here triggers the
+        # ``sh -c`` wrap in ``_render_cmd_array``.
+        "start": "npx prisma migrate deploy && npm start",
+    },
     "python": {
         "port": "8000",
         "build": "",
@@ -213,11 +222,12 @@ _STACK_DEFAULTS: dict[str, dict[str, str]] = {
 }
 
 _STACK_DETECT_REASONS: dict[str, str] = {
-    "spa":    'package.json has "vite" in (dev)dependencies',
-    "node":   "package.json present (no vite dep found)",
-    "python": "requirements.txt or pyproject.toml present",
-    "static": "index.html present, no package.json",
-    "custom": "no recognized marker files",
+    "spa":          'package.json has "vite" in (dev)dependencies',
+    "node":         "package.json present (no vite dep, no prisma/schema.prisma)",
+    "node-prisma":  "package.json present and prisma/schema.prisma found",
+    "python":       "requirements.txt or pyproject.toml present",
+    "static":       "index.html present, no package.json",
+    "custom":       "no recognized marker files",
 }
 
 
@@ -240,6 +250,8 @@ def _detect_stack(project_root: Path) -> str:
         }
         if "vite" in deps:
             return "spa"
+        if (project_root / "prisma" / "schema.prisma").is_file():
+            return "node-prisma"
         return "node"
     if (project_root / "requirements.txt").exists() \
        or (project_root / "pyproject.toml").exists():
@@ -247,6 +259,27 @@ def _detect_stack(project_root: Path) -> str:
     if (project_root / "index.html").exists():
         return "static"
     return "custom"
+
+
+_SHELL_METACHARS = ("&&", "||", ";", "|", ">", "<", "$(", "`")
+
+
+def _render_cmd_array(cmd: str) -> str:
+    """Encode a start command as a Dockerfile CMD JSON array.
+
+    Plain commands (``npm start``, ``next start -p 3000``) get tokenized
+    via shlex so quoted args survive — exec form, no shell process.
+    Anything containing shell metacharacters (``&&``, pipes, redirects,
+    command substitution) forces shell form ``["sh", "-c", "<cmd>"]``
+    so the metacharacter is interpreted by sh, not passed as a literal
+    arg to the first binary.  Empty cmd renders as a no-op.
+    """
+    if not cmd:
+        return '["true"]'
+    if any(m in cmd for m in _SHELL_METACHARS):
+        return json.dumps(["sh", "-c", cmd])
+    import shlex
+    return json.dumps(shlex.split(cmd))
 
 
 def _render_template_text(text: str, replacements: dict[str, str]) -> str:
@@ -296,9 +329,7 @@ def auto_scaffold_if_missing(
         "__POLARIS_PORT__": defaults["port"],
         "__POLARIS_BUILD_CMD__": defaults["build"] or "true",  # Dockerfile RUN
         "__POLARIS_START_CMD__": defaults["start"],
-        "__POLARIS_START_CMD_JSON__": (
-            json.dumps(defaults["start"].split()) if defaults["start"] else '["true"]'
-        ),
+        "__POLARIS_START_CMD_JSON__": _render_cmd_array(defaults["start"]),
     }
 
     written: list[str] = []

@@ -209,19 +209,21 @@ def _audit_polaris_yaml(repo: Path) -> list[str]:
 
 
 STACK_DESCRIPTIONS: dict[str, str] = {
-    "spa":    "Static SPA builder — Vite / Astro / CRA → nginx. For client-side React/Vue/Svelte that compiles to dist/.",
-    "node":   "Long-running Node server — Express, Next.js SSR, Fastify. For apps that listen on a port.",
-    "python": "Python web server — FastAPI, Django, Flask. For WSGI/ASGI apps.",
-    "static": "Pre-built HTML/CSS/JS served as-is. For sites where NOTHING needs to build — just upload files.",
-    "custom": "No template. You author your own Dockerfile, compose.prod.yml, and polaris.yaml.",
+    "spa":          "Static SPA builder — Vite / Astro / CRA → nginx. For client-side React/Vue/Svelte that compiles to dist/.",
+    "node":         "Long-running Node server — Express, Next.js SSR, Fastify. For apps that listen on a port.",
+    "node-prisma":  "Long-running Node server with Prisma ORM. Same as node, but Dockerfile copies prisma/ before install and runs `prisma generate`.",
+    "python":       "Python web server — FastAPI, Django, Flask. For WSGI/ASGI apps.",
+    "static":       "Pre-built HTML/CSS/JS served as-is. For sites where NOTHING needs to build — just upload files.",
+    "custom":       "No template. You author your own Dockerfile, compose.prod.yml, and polaris.yaml.",
 }
 
 STACK_DETECT_REASONS: dict[str, str] = {
-    "spa":    'package.json has "vite" in (dev)dependencies',
-    "node":   "package.json present (no vite dep found)",
-    "python": "requirements.txt or pyproject.toml present",
-    "static": "index.html present, no package.json",
-    "custom": "no recognized marker files",
+    "spa":          'package.json has "vite" in (dev)dependencies',
+    "node":         "package.json present (no vite dep, no prisma/schema.prisma)",
+    "node-prisma":  "package.json present and prisma/schema.prisma found",
+    "python":       "requirements.txt or pyproject.toml present",
+    "static":       "index.html present, no package.json",
+    "custom":       "no recognized marker files",
 }
 
 
@@ -287,12 +289,35 @@ def detect_stack(repo: Path) -> str:
         }
         if "vite" in deps:
             return "spa"
+        if (repo / "prisma" / "schema.prisma").is_file():
+            return "node-prisma"
         return "node"
     if (repo / "requirements.txt").exists() or (repo / "pyproject.toml").exists():
         return "python"
     if (repo / "index.html").exists():
         return "static"
     return "custom"
+
+
+_SHELL_METACHARS = ("&&", "||", ";", "|", ">", "<", "$(", "`")
+
+
+def render_cmd_array(cmd: str) -> str:
+    """Encode a start command as a Dockerfile CMD JSON array.
+
+    Plain commands (``npm start``, ``next start -p 3000``) tokenize
+    via shlex so quoted args survive — exec form, no shell process.
+    Anything containing shell metacharacters (``&&``, pipes, redirects,
+    command substitution) forces shell form ``["sh", "-c", "<cmd>"]``
+    so the metacharacter is interpreted by sh.  Empty cmd renders as
+    a no-op.
+    """
+    if not cmd:
+        return '["true"]'
+    if any(m in cmd for m in _SHELL_METACHARS):
+        return json.dumps(["sh", "-c", cmd])
+    import shlex
+    return json.dumps(shlex.split(cmd))
 
 
 def render_template_text(text: str, replacements: dict[str, str]) -> str:
@@ -333,19 +358,27 @@ def cmd_scaffold_publish(args: argparse.Namespace) -> None:
         _fail(f"no template for stack={stack} (looked in {tpl_dir})")
 
     service = args.service or "web"
-    default_port = {"spa": 80, "node": 3000, "python": 8000, "static": 80}.get(stack, 80)
+    default_port = {
+        "spa": 80, "node": 3000, "node-prisma": 3000, "python": 8000, "static": 80,
+    }.get(stack, 80)
     port = str(args.port or default_port)
 
     # Reasonable defaults Codex can edit afterwards.
     default_build = {
         "spa": "npm run build",
         "node": "npm run build",
+        "node-prisma": "npm run build",
         "python": "",
         "static": "",
     }.get(stack, "")
     default_start = {
         "spa": "",  # nginx CMD comes from the base image
         "node": "npm start",
+        # Prisma stacks must apply pending migrations before serving;
+        # otherwise the first DB query crashes with "table doesn't exist"
+        # on a fresh prod database.  ``&&`` triggers shell wrapping in
+        # render_cmd_array.
+        "node-prisma": "npx prisma migrate deploy && npm start",
         "python": "python -m uvicorn app:app --host 0.0.0.0 --port " + port,
         "static": "",
     }.get(stack, "")
@@ -358,7 +391,7 @@ def cmd_scaffold_publish(args: argparse.Namespace) -> None:
         "__POLARIS_PORT__": port,
         "__POLARIS_BUILD_CMD__": build_cmd or "true",  # Dockerfile RUN can't be empty
         "__POLARIS_START_CMD__": start_cmd,
-        "__POLARIS_START_CMD_JSON__": json.dumps(start_cmd.split()) if start_cmd else '["true"]',
+        "__POLARIS_START_CMD_JSON__": render_cmd_array(start_cmd),
     }
 
     targets = ["Dockerfile", "compose.prod.yml", "polaris.yaml"]
