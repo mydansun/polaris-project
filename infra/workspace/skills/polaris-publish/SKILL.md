@@ -23,15 +23,37 @@ Stacks: `spa` (Vite/Astro/CRA → nginx), `node` (Express/Next SSR/Fastify, no P
 
 ## Dry-run the build locally before `polaris publish`
 
-`polaris publish` runs `polaris.yaml::build` inside a fresh production container — TypeScript / linter / type errors that pass in dev (lenient) but fail in prod (strict) only surface there, and each round-trip costs ~30-60s of docker build.  Catch them in one pass first:
+`polaris publish` runs whatever is in `polaris.yaml::build` inside a fresh production container.  TypeScript / linter / type errors that the dev mode forgives (`next dev`, `vite`, `tsc --noEmit`-not-running) will fail strict-mode prod compile, and each round-trip costs ~30-60s of docker build.  Run the literal build cmd from `polaris.yaml` once locally first to catch them all in one pass:
 
 ```bash
-# In the workspace, from the project root, run the literal build cmd
-# from polaris.yaml.  Example for a Next.js project:
-npm run build
+# Whatever is in polaris.yaml::build — examples:
+npm run build         # node / node-prisma / spa
+pnpm build            # ditto if pnpm
+python -m build       # python wheel projects
+# (static stack has no build step — skip)
 ```
 
 Fix everything it reports, commit, THEN `polaris publish`.
+
+## Stack-specific gotchas
+
+### Next.js + DB-backed pages (any node-prisma project)
+
+`next build` tries to **prerender** server components by default, including ones that read from your database.  In production build there is **no DB connection** — prerender crashes with "can't connect" or "relation doesn't exist", aborting the whole build.
+
+Mark every server component / page / layout that does a DB read with one of:
+
+```ts
+export const dynamic = 'force-dynamic';   // SSR every request
+// or, for cacheable content:
+export const revalidate = 60;             // ISR, regenerate every N seconds
+```
+
+Otherwise the page is treated as static and runs at build time, where your DB doesn't exist.  Goes in `app/<route>/page.tsx`, `app/<route>/layout.tsx`, or any RSC that fetches.
+
+### Strict prod TypeScript
+
+Next.js / Vite production builds run TS with stricter settings than dev.  Implicit `any` on callback params, unused vars in some configs, and missing return types can all pass `dev` and fail `build`.  The dry-run section above is the cheap fix; if you hit one mid-publish, fix locally and re-run dry-run before re-publishing.
 
 `polaris publish` runs `prepublish-audit` automatically — secret scan, size scan, plus an LLM deep-audit on the platform side. Failed audit blocks the build.
 
@@ -50,7 +72,6 @@ Redeploys the image tagged with that commit. The image must still be in the regi
 ## Common pitfalls
 
 - **Modifying the scaffolded files without thinking.** The templates encode platform conventions (port from `polaris.yaml`, env via `secrets.env`, no host-published ports). Tweak the `start` / `build` commands freely; leave the structural pieces alone.
-- **Forgetting to commit before publishing.** `publish` builds from the committed tree, not the working directory. Uncommitted changes won't ship.
 - **Killing `polaris publish` mid-stream.** Ctrl-C only detaches the local SSE viewer — the build keeps running on the platform. Re-attach by hitting the deployment events endpoint, or just check `polaris status`.
 - **`--dry-run` does NOT promote.** It builds and smoke-tests but doesn't flip the route. Use it to validate the image; drop the flag for a real publish.
 
