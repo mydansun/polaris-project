@@ -63,8 +63,13 @@ VIEWPORT_HEIGHT = 720
 CHROMIUM_TIMEOUT_SECONDS = 25.0
 
 # Wait this many ms after page load before screenshotting.  Lets web-
-# fonts swap in and lazy-loaded hero images settle.  Tuned conservative.
-VIRTUAL_TIME_BUDGET_MS = 4_000
+# fonts swap in and lazy-loaded hero images settle.  4s was too short
+# for Next.js + Prisma pages whose hero images come from a remote S3
+# bucket — capture fired before the optimized ``next/image`` requests
+# finished and the screenshot was a near-blank cream skeleton.  10s
+# covers typical landing pages without making simple ones noticeably
+# slower (chromium exits when virtual time elapses).
+VIRTUAL_TIME_BUDGET_MS = 10_000
 
 # Pre-screenshot HTTP probe: poll the public URL until it returns 200
 # (after following redirects).  Catches the brief window between
