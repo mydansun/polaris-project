@@ -194,9 +194,11 @@
     "activeCount": "活跃",
     "status": {
       "draft": "草稿",
+      "working": "进行中",
       "publishing": "发布中",
       "live": "已上线",
-      "failed": "失败",
+      "publishFailed": "发布失败",
+      "agentError": "出错",
       "rolledBack": "已回滚"
     }
   },

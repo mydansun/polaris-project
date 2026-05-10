@@ -194,9 +194,11 @@
     "activeCount": "active",
     "status": {
       "draft": "Draft",
+      "working": "Working",
       "publishing": "Publishing",
       "live": "Live",
-      "failed": "Failed",
+      "publishFailed": "Publish failed",
+      "agentError": "Error",
       "rolledBack": "Rolled back"
     }
   },

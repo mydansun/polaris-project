@@ -22,10 +22,6 @@ import { listProjects, logout as apiLogout } from "./api";
 const REFRESH_INTERVAL_MS = 10_000;
 
 
-type DeploymentSummary = NonNullable<ProjectResponse["latest_deployment"]>;
-type DeploymentStatus = DeploymentSummary["status"];
-
-
 export function HomePage({
   user,
   onLogout,
@@ -143,6 +139,35 @@ export function HomePage({
 }
 
 
+type CardStatus =
+  | "publishing"
+  | "working"
+  | "live"
+  | "publish_failed"
+  | "rolled_back"
+  | "agent_error"
+  | "draft";
+
+
+function deriveCardStatus(
+  ld: ProjectResponse["latest_deployment"],
+  sessionStatus: ProjectResponse["latest_session_status"],
+): CardStatus {
+  // Precedence top-down.  A live publish-in-flight wins (the user is
+  // watching the build); next, an active agent turn wins over a stale
+  // "live" pill (the user is editing — ``Working`` reflects that the
+  // ``Live`` deployment is going out of date); then deployment state;
+  // then session-only failure (no deploy ever attempted).
+  if (ld?.status === "queued" || ld?.status === "building") return "publishing";
+  if (sessionStatus === "queued" || sessionStatus === "running") return "working";
+  if (ld?.status === "ready") return "live";
+  if (ld?.status === "failed") return "publish_failed";
+  if (ld?.status === "rolled_back") return "rolled_back";
+  if (sessionStatus === "failed") return "agent_error";
+  return "draft";
+}
+
+
 function ProjectCardLi({
   index,
   project,
@@ -153,9 +178,14 @@ function ProjectCardLi({
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   const ld = project.latest_deployment;
-  const status: DeploymentStatus | "draft" = ld?.status ?? "draft";
-  const isPublishing = status === "queued" || status === "building";
-  const updated = formatRelative(project.updated_at, t);
+  const status = deriveCardStatus(ld, project.latest_session_status);
+  const isPublishing = status === "publishing";
+  // Time anchor: when "Live", we want "<X> ago" to mean "deployed
+  // <X> ago" so the pill + line read as one fact.  Other statuses use
+  // project.updated_at — last meaningful activity, whatever that was.
+  const timeIso =
+    status === "live" && ld?.ready_at ? ld.ready_at : project.updated_at;
+  const updated = formatRelative(timeIso, t);
 
   return (
     <li
@@ -213,8 +243,8 @@ function ProjectCardLi({
           )}
         </p>
         <hr className="my-3 border-border-light" />
-        <StatusLine ld={ld} sessionStatus={project.latest_session_status} t={t} />
-        <p className="mt-1 font-mono text-[10px] text-text-muted">{updated}</p>
+        <StatusLine status={status} ld={ld} t={t} />
+        <p className="mt-1 font-mono text-xs text-text-muted">{updated}</p>
       </Card>
       </Link>
     </li>
@@ -223,74 +253,64 @@ function ProjectCardLi({
 
 
 function StatusLine({
+  status,
   ld,
-  sessionStatus,
   t,
 }: {
+  status: CardStatus;
   ld: ProjectResponse["latest_deployment"];
-  sessionStatus: ProjectResponse["latest_session_status"];
   t: ReturnType<typeof useTranslation>["t"];
 }) {
-  // Deployment status takes precedence; otherwise fall back to the
-  // most recent agent session so projects whose codex / discovery turn
-  // crashed pre-publish surface as "Failed" instead of silently "Draft".
-  const status: DeploymentStatus | "draft" = (() => {
-    if (ld?.status) return ld.status;
-    if (sessionStatus === "failed") return "failed";
-    if (sessionStatus === "queued" || sessionStatus === "running") return "building";
-    return "draft";
-  })();
-  // Tone-pair per status:
-  //   - bg / text both pulled from the same hue family so the pill
-  //     reads as a single chip (light tint background + saturated
-  //     text), not a colored dot floating in muted text.
-  //   - Tokens (--color-success / --color-error / --color-accent /
-  //     --color-text-muted) come from app.css — no new colors added.
+  // Tone-pair per status: bg + text from the same hue family so the
+  // pill reads as one chip (tint bg + saturated text), not a dot
+  // floating in muted text.  Tokens come from app.css.
   const tone = (() => {
     switch (status) {
-      case "ready":
+      case "live":
+        return { bg: "bg-success-light", text: "text-success", dot: "bg-success" };
+      case "publishing":
         return {
-          bg: "bg-success-light",
-          text: "text-success",
-          dot: "bg-success",
-        };
-      case "queued":
-      case "building":
-        return {
-          bg: "bg-accent/10",
-          text: "text-accent",
+          bg: "bg-accent/10", text: "text-accent",
           dot: "bg-accent animate-pulse",
         };
-      case "failed":
+      case "working":
         return {
-          bg: "bg-error-light",
-          text: "text-error",
-          dot: "bg-error",
+          bg: "bg-accent/10", text: "text-accent",
+          dot: "bg-accent animate-pulse",
         };
+      case "publish_failed":
+      case "agent_error":
+        return { bg: "bg-error-light", text: "text-error", dot: "bg-error" };
       case "rolled_back":
-        return {
-          bg: "bg-text-muted/10",
-          text: "text-text-muted",
-          dot: "bg-text-muted",
-        };
+      case "draft":
       default:
         return {
-          bg: "bg-text-muted/10",
-          text: "text-text-muted",
+          bg: "bg-text-muted/10", text: "text-text-muted",
           dot: "bg-text-muted",
         };
     }
   })();
   const label = (() => {
     switch (status) {
-      case "ready": return t("home.status.live", "Live");
-      case "queued":
-      case "building": return t("home.status.publishing", "Publishing");
-      case "failed": return t("home.status.failed", "Failed");
-      case "rolled_back": return t("home.status.rolledBack", "Rolled back");
-      default: return t("home.status.draft", "Draft");
+      case "live":           return t("home.status.live", "Live");
+      case "publishing":     return t("home.status.publishing", "Publishing");
+      case "working":        return t("home.status.working", "Working");
+      case "publish_failed": return t("home.status.publishFailed", "Publish failed");
+      case "agent_error":    return t("home.status.agentError", "Error");
+      case "rolled_back":    return t("home.status.rolledBack", "Rolled back");
+      case "draft":
+      default:               return t("home.status.draft", "Draft");
     }
   })();
+
+  // Show the prod URL button when there's a real public site to point at
+  // — that's "live" (current) and "working" (the previous publish is
+  // still serving while the user edits).  ``publishing`` deliberately
+  // doesn't show the URL: traefik may not have picked up the new
+  // container yet, and a stale URL pointing at a different deployment
+  // confuses more than it helps.
+  const showProdUrl =
+    (status === "live" || status === "working") && ld?.domain;
 
   return (
     <div className="flex items-center gap-2">
@@ -304,7 +324,7 @@ function StatusLine({
         <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
         {label}
       </span>
-      {ld && status === "ready" && ld.domain && (
+      {showProdUrl && ld?.domain && (
         <ProdUrlButton url={`https://${ld.domain}`} domain={ld.domain} />
       )}
     </div>
@@ -322,10 +342,10 @@ function ProdUrlButton({ url, domain }: { url: string; domain: string }) {
         e.stopPropagation();
         window.open(url, "_blank", "noopener,noreferrer");
       }}
-      className="ml-auto inline-flex items-center gap-1 truncate font-mono text-[10px] text-text-muted hover:text-accent hover:underline"
+      className="ml-auto inline-flex items-center gap-1 truncate font-mono text-xs text-text-muted hover:text-accent hover:underline"
       title={domain}
     >
-      <span className="icon-[lucide--external-link] text-[10px]" />
+      <span className="icon-[lucide--external-link] text-xs" />
       {shortHash(domain)}
     </button>
   );
@@ -333,12 +353,13 @@ function ProdUrlButton({ url, domain }: { url: string; domain: string }) {
 
 
 // Show the leading hash chunk of "<uuid>.prod.<domain>" rather than the
-// full string.  Title attribute carries the full domain for hover.
+// full string.  10 chars is enough to disambiguate at a glance; the
+// title attribute carries the full domain for hover.
 function shortHash(domain: string): string {
   const first = domain.split(".")[0];
   if (!first) return domain;
-  if (first.length <= 8) return first;
-  return `${first.slice(0, 8)}…`;
+  if (first.length <= 10) return first;
+  return `${first.slice(0, 10)}…`;
 }
 
 
