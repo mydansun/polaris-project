@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
@@ -130,6 +131,19 @@ def _stub_chromium_writes_a_png(content: bytes = b"\x89PNG\r\n\x1a\n"):
     return fake
 
 
+def _stub_probe_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass the pre-screenshot HTTP probe in orchestrator tests.
+
+    The probe is exercised separately by ``test_wait_until_ready_*``;
+    these orchestrator tests want to assert the post-probe path
+    (chromium + S3 + DB)."""
+
+    async def fake_ready(*_args, **_kwargs):
+        return True
+
+    monkeypatch.setattr(publish_screenshot, "_wait_until_ready", fake_ready)
+
+
 @pytest.mark.asyncio
 async def test_capture_and_record_happy_path(
     settings, db_with_deployment, monkeypatch
@@ -137,6 +151,7 @@ async def test_capture_and_record_happy_path(
     session, dep = db_with_deployment
 
     # Stub chromium subprocess.
+    _stub_probe_ok(monkeypatch)
     monkeypatch.setattr(
         publish_screenshot, "_run_chromium", _stub_chromium_writes_a_png()
     )
@@ -183,6 +198,8 @@ async def test_capture_and_record_chromium_timeout_returns_none(
 ):
     session, dep = db_with_deployment
 
+    _stub_probe_ok(monkeypatch)
+
     async def fake_run(url, output):
         raise RuntimeError("chromium timed out")
 
@@ -208,6 +225,7 @@ async def test_capture_and_record_s3_failure_returns_none_no_db_write(
     settings, db_with_deployment, monkeypatch
 ):
     session, dep = db_with_deployment
+    _stub_probe_ok(monkeypatch)
     monkeypatch.setattr(
         publish_screenshot, "_run_chromium", _stub_chromium_writes_a_png()
     )
@@ -237,6 +255,8 @@ async def test_capture_and_record_cleans_up_tempfile(
     upload fails — otherwise long-running api processes leak /tmp."""
     session, dep = db_with_deployment
 
+    _stub_probe_ok(monkeypatch)
+
     captured_paths: list[Path] = []
 
     async def fake_run(url, output):
@@ -256,3 +276,90 @@ async def test_capture_and_record_cleans_up_tempfile(
     # The temp file should NOT linger on disk.
     assert captured_paths
     assert not captured_paths[0].exists()
+
+
+# ── pre-screenshot HTTP probe ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_succeeds_on_first_200(respx_mock):
+    respx_mock.get("https://x/").respond(status_code=200, text="ok")
+    ok = await publish_screenshot._wait_until_ready(
+        "https://x/", timeout_s=2.0, interval_s=0.1, request_timeout_s=1.0,
+    )
+    assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_retries_until_200(respx_mock):
+    """Connection refused / 503 / 502 are all "not ready yet" — keep polling
+    until either the URL flips to 200 or we hit the deadline."""
+    route = respx_mock.get("https://x/")
+    route.side_effect = [
+        httpx.ConnectError("refused"),
+        httpx.Response(503),
+        httpx.Response(200, text="ok"),
+    ]
+    ok = await publish_screenshot._wait_until_ready(
+        "https://x/", timeout_s=5.0, interval_s=0.05, request_timeout_s=1.0,
+    )
+    assert ok is True
+    assert route.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_times_out_when_never_200(respx_mock):
+    """If the URL never flips to 200 within the budget, return False so
+    the caller skips chromium altogether."""
+    respx_mock.get("https://x/").respond(status_code=503)
+    ok = await publish_screenshot._wait_until_ready(
+        "https://x/", timeout_s=0.3, interval_s=0.1, request_timeout_s=0.1,
+    )
+    assert ok is False
+
+
+@pytest.mark.asyncio
+async def test_wait_until_ready_follows_redirects(respx_mock):
+    """Apps that redirect / → /home should be detected by the final-page
+    status, not by the redirect status of the first hop."""
+    respx_mock.get("https://x/").respond(
+        status_code=308, headers={"Location": "https://x/home"}
+    )
+    respx_mock.get("https://x/home").respond(status_code=200, text="ok")
+    ok = await publish_screenshot._wait_until_ready(
+        "https://x/", timeout_s=2.0, interval_s=0.1, request_timeout_s=1.0,
+    )
+    assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_capture_and_record_skips_chromium_when_probe_times_out(
+    settings, db_with_deployment, monkeypatch
+):
+    """If the probe never returns 200, capture_and_record returns None
+    WITHOUT spawning chromium — saves the 25s wasted timeout."""
+    session, dep = db_with_deployment
+
+    async def fake_ready(*_args, **_kwargs):
+        return False
+
+    monkeypatch.setattr(publish_screenshot, "_wait_until_ready", fake_ready)
+
+    chromium_calls = 0
+
+    async def fail_if_called(*_args, **_kwargs):
+        nonlocal chromium_calls
+        chromium_calls += 1
+        raise AssertionError("chromium should not be invoked when probe times out")
+
+    monkeypatch.setattr(publish_screenshot, "_run_chromium", fail_if_called)
+
+    out = await publish_screenshot.capture_and_record(
+        deployment_id=dep.id, url="https://x/", db=session, settings=settings,
+    )
+    assert out is None
+    assert chromium_calls == 0
+    refreshed = (
+        await session.execute(select(Deployment).where(Deployment.id == dep.id))
+    ).scalar_one()
+    assert refreshed.screenshot_url is None

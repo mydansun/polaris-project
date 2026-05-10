@@ -29,9 +29,11 @@ import asyncio
 import logging
 import secrets
 import tempfile
+import time
 from pathlib import Path
 from uuid import UUID
 
+import httpx
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,6 +65,16 @@ CHROMIUM_TIMEOUT_SECONDS = 25.0
 # Wait this many ms after page load before screenshotting.  Lets web-
 # fonts swap in and lazy-loaded hero images settle.  Tuned conservative.
 VIRTUAL_TIME_BUDGET_MS = 4_000
+
+# Pre-screenshot HTTP probe: poll the public URL until it returns 200
+# (after following redirects).  Catches the brief window between
+# `dep.status = ready` (we set this BEFORE traefik has noticed the new
+# container) and the public URL actually serving content.  Saves the
+# downstream chromium launch + 25s timeout when the probe never
+# resolves.
+PROBE_TIMEOUT_SECONDS = 30.0
+PROBE_INTERVAL_SECONDS = 2.0
+PROBE_REQUEST_TIMEOUT_SECONDS = 5.0
 
 
 def _chromium_command(url: str, output: Path) -> list[str]:
@@ -115,6 +127,43 @@ async def _run_chromium(url: str, output: Path) -> None:
         raise RuntimeError(f"chromium produced no file at {output}")
 
 
+async def _wait_until_ready(
+    url: str,
+    *,
+    timeout_s: float = PROBE_TIMEOUT_SECONDS,
+    interval_s: float = PROBE_INTERVAL_SECONDS,
+    request_timeout_s: float = PROBE_REQUEST_TIMEOUT_SECONDS,
+) -> bool:
+    """Poll ``url`` until it returns HTTP 200 (after following redirects)
+    or ``timeout_s`` elapses.  Returns True on first 200, False on
+    timeout.  Connection errors / TLS issues / non-200 statuses all
+    treated as "not ready yet" and retried until the timeout.
+
+    ``verify=False`` because freshly-issued LE certs may have OCSP / CT
+    sync lag; chromium will see the cert as valid (browsers accept LE)
+    and we trust the URL we just deployed regardless.  ``follow_redirects``
+    so apps that redirect ``/`` → ``/home`` are detected by their final
+    page status, matching what chromium would render.
+    """
+    deadline = time.monotonic() + timeout_s
+    async with httpx.AsyncClient(
+        verify=False,
+        follow_redirects=True,
+        timeout=request_timeout_s,
+    ) as client:
+        while time.monotonic() < deadline:
+            try:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    return True
+            except httpx.HTTPError:
+                # Connection refused / DNS / TLS still being set up —
+                # keep polling until the deadline.
+                pass
+            await asyncio.sleep(interval_s)
+    return False
+
+
 async def capture_and_record(
     *,
     deployment_id: UUID,
@@ -128,7 +177,21 @@ async def capture_and_record(
 
     Best-effort: every exception is swallowed and logged.  The publish
     pipeline must NOT fail because the screenshot step did.
+
+    Probes the URL with httpx until it returns 200 before launching
+    chromium.  This avoids a 25s wasted chromium timeout when the URL
+    isn't actually serving (cert not yet propagated, traefik hasn't
+    picked up the new container, etc.) and lets the fallback chain
+    (mood_board_url → placeholder card on the frontend) kick in faster.
     """
+    if not await _wait_until_ready(url):
+        logger.info(
+            "publish: %s never returned 200 within %.0fs; skipping screenshot "
+            "(frontend will fall back to mood board / placeholder)",
+            url, PROBE_TIMEOUT_SECONDS,
+        )
+        return None
+
     key = S3_KEY_TEMPLATE.format(deployment_id=str(deployment_id))
     # tempfile in /tmp — chromium writes here, we read+upload, delete.
     # secrets.token_hex avoids collisions when two publishes overlap.
