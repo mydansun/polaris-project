@@ -173,13 +173,21 @@ async def test_capture_and_record_happy_path(
         settings=settings,
     )
 
-    # Returned URL composed from settings.s3_url_base + the canonical key.
+    # Returned URL composed from settings.s3_url_base + the salted key.
+    # Each shoot gets a fresh uuid4 suffix so the URL itself changes —
+    # bypasses any browser cache that might be holding a previous
+    # response for this deployment_id.
     assert public_url is not None
-    assert public_url.endswith(
-        f"/static/images/deployments/{dep.id}.png"
+    import re
+    key_pattern = (
+        rf"static/images/deployments/{re.escape(str(dep.id))}-[0-9a-f]{{32}}\.png"
     )
-    # S3 was called with the right shape.
-    assert uploaded["key"] == f"static/images/deployments/{dep.id}.png"
+    assert re.search(key_pattern, public_url), (
+        f"public_url {public_url!r} doesn't match {key_pattern!r}"
+    )
+    assert re.fullmatch(key_pattern, str(uploaded["key"])), (
+        f"uploaded key {uploaded['key']!r} doesn't match {key_pattern!r}"
+    )
     assert uploaded["content_type"] == "image/png"
     assert uploaded["bytes"] >= 8  # at least the PNG header
 
@@ -330,6 +338,44 @@ async def test_wait_until_ready_follows_redirects(respx_mock):
         "https://x/", timeout_s=2.0, interval_s=0.1, request_timeout_s=1.0,
     )
     assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_capture_and_record_uses_fresh_salt_per_shoot(
+    settings, db_with_deployment, monkeypatch
+):
+    """Re-shooting the same deployment must produce a different S3 key
+    so browsers can't serve a stale cached PNG under the same URL.
+    Otherwise users hit the May-2026 ``404 in browser cache`` trap
+    where the URL was 404 before backfill, browser cached the 404,
+    and even after the file existed in S3 the user kept seeing 404."""
+    session, dep = db_with_deployment
+    _stub_probe_ok(monkeypatch)
+    monkeypatch.setattr(
+        publish_screenshot, "_run_chromium", _stub_chromium_writes_a_png()
+    )
+
+    keys: list[str] = []
+
+    async def fake_upload(*, key, **_):
+        keys.append(str(key))
+
+    monkeypatch.setattr(s3_mod, "upload_bytes", fake_upload)
+
+    for _ in range(3):
+        await publish_screenshot.capture_and_record(
+            deployment_id=dep.id, url="https://x/", db=session, settings=settings,
+        )
+
+    assert len(keys) == 3
+    assert len(set(keys)) == 3, f"keys must all be distinct, got: {keys}"
+    # All three should match the salted shape.
+    import re
+    pattern = (
+        rf"static/images/deployments/{re.escape(str(dep.id))}-[0-9a-f]{{32}}\.png"
+    )
+    for k in keys:
+        assert re.fullmatch(pattern, k), f"{k!r} does not match {pattern!r}"
 
 
 @pytest.mark.asyncio

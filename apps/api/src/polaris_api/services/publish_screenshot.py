@@ -31,7 +31,7 @@ import secrets
 import tempfile
 import time
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from sqlalchemy import update
@@ -47,8 +47,13 @@ logger = logging.getLogger(__name__)
 
 # Screenshots land at this S3 prefix.  Mirrors the layout used by the
 # Unsplash MCP (static/images/...) so an existing public-read bucket
-# policy on `static/*` covers us.
-S3_KEY_TEMPLATE = "static/images/deployments/{deployment_id}.png"
+# policy on `static/*` covers us.  Salt: a uuid4 generated per capture
+# so re-shoots on the same deployment produce a NEW URL — browser
+# caches keyed by URL never serve a stale screenshot, and MinIO's
+# missing default ``Cache-Control`` header doesn't matter.  Old PNGs
+# under the same deployment_id stay in S3 (best-effort orphan; cheap
+# at ~300 KB / shoot).
+S3_KEY_TEMPLATE = "static/images/deployments/{deployment_id}-{salt}.png"
 
 # Viewport: 1280×720 matches the seed-time backfill we did via the
 # Playwright MCP, and is HomePage-card friendly (3:2-ish crop fits the
@@ -197,7 +202,9 @@ async def capture_and_record(
         )
         return None
 
-    key = S3_KEY_TEMPLATE.format(deployment_id=str(deployment_id))
+    key = S3_KEY_TEMPLATE.format(
+        deployment_id=str(deployment_id), salt=uuid4().hex,
+    )
     # tempfile in /tmp — chromium writes here, we read+upload, delete.
     # secrets.token_hex avoids collisions when two publishes overlap.
     tmp_path = Path(tempfile.gettempdir()) / f"polaris-shot-{secrets.token_hex(4)}.png"
